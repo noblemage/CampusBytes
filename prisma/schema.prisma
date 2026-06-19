@@ -6,10 +6,34 @@ generator client {
   provider = "prisma-client-js"
 }
 
-model MenuItem {
-  id          Int      @id @default(autoincrement())
-  name        String
-  price       Float
-  canteen     String   
-  isAvailable Boolean  @default(true)
+model Student {
+  studentId                Int             @id
+  name                     String
+  paidStatus               Int             // 0 = unpaid, 1 = paid
+  passwordHash             String?
+  currentWebAuthnChallenge String?
+  authenticators           Authenticator[]
+  MealRedemption           MealRedemption[]
+}
+
+model Authenticator {
+  credentialID         String  @id
+  credentialPublicKey  Bytes
+  counter              BigInt
+  credentialDeviceType String
+  credentialBackedUp   Boolean
+  transports           String?
+  studentId            Int
+  student              Student @relation(fields: [studentId], references: [studentId], onDelete: Cascade)
+}
+
+model MealRedemption {
+  id         Int      @id @default(autoincrement())
+  studentId  Int
+  date       String   // Format: YYYY-MM-DD
+  mealSlot   String   // '01' (Breakfast), '02' (Lunch), '03' (Dinner)
+  redeemedAt DateTime @default(now())
+  student    Student  @relation(fields: [studentId], references: [studentId], onDelete: Cascade)
+
+  @@unique([studentId, date, mealSlot])
 }

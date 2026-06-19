@@ -1,521 +1,659 @@
 'use client';
-import { useQuery } from '@tanstack/react-query';
-import { useState, useMemo } from 'react';
 
-interface MenuItem {
-  id: number;
+import { useState, useEffect } from 'react';
+import QRCode from 'qrcode';
+import { startRegistration, startAuthentication } from '@simplewebauthn/browser';
+import hmacSHA256 from 'crypto-js/hmac-sha256';
+import Hex from 'crypto-js/enc-hex';
+
+interface Student {
+  studentId: number;
   name: string;
-  price: number;
-  canteen: string;
+  paidStatus: number;
 }
 
-interface CartItem extends MenuItem {
-  quantity: number;
+interface Redemption {
+  id: number;
+  studentId: number;
+  date: string;
+  mealSlot: string;
+  redeemedAt: string;
 }
 
-// Map food items to simple emojis for quick recognition
-const getFoodEmoji = (name: string): string => {
-  const lowercaseName = name.toLowerCase();
-  if (lowercaseName.includes('burger') || lowercaseName.includes('bun')) return '🍔';
-  if (lowercaseName.includes('pizza')) return '🍕';
-  if (lowercaseName.includes('noodle') || lowercaseName.includes('pasta') || lowercaseName.includes('chow')) return '🍝';
-  if (lowercaseName.includes('rice') || lowercaseName.includes('biryani') || lowercaseName.includes('meals')) return '🍛';
-  if (lowercaseName.includes('coffee') || lowercaseName.includes('tea') || lowercaseName.includes('drink') || lowercaseName.includes('beverage')) return '☕';
-  if (lowercaseName.includes('sandwich') || lowercaseName.includes('toast')) return '🥪';
-  if (lowercaseName.includes('fry') || lowercaseName.includes('fries') || lowercaseName.includes('snack') || lowercaseName.includes('samosa')) return '🍟';
-  if (lowercaseName.includes('sweet') || lowercaseName.includes('dessert') || lowercaseName.includes('cake') || lowercaseName.includes('ice')) return '🍰';
-  if (lowercaseName.includes('dosa') || lowercaseName.includes('roti') || lowercaseName.includes('nan') || lowercaseName.includes('paneer') || lowercaseName.includes('chappathi')) return '🫓';
-  return '🍛';
-};
+const SECRET_KEY = 'Janet123';
+
+// Fallback HMAC generation using crypto-js so it works on HTTP LAN (mobile dev testing)
+function generateClientHMAC(message: string, secret: string): string {
+  try {
+    const hash = hmacSHA256(message, secret);
+    return hash.toString(Hex);
+  } catch (err) {
+    console.error("HMAC generation failed:", err);
+    return '';
+  }
+}
 
 export default function Home() {
-  const { data: menuItems, isLoading, error } = useQuery<MenuItem[]>({
-    queryKey: ['menu'],
-    queryFn: async () => {
-      const response = await fetch('/api/menu');
-      if (!response.ok) throw new Error('Failed to fetch data');
-      return response.json();
-    },
-  });
+  const [viewMode, setViewMode] = useState<'student' | 'warden'>('student');
+  const [currentDate, setCurrentDate] = useState('');
+  const [isSecureEnv, setIsSecureEnv] = useState(true);
 
-  // UI States
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCanteen, setSelectedCanteen] = useState('All');
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [isCartOpen, setIsCartOpen] = useState(false);
-  const [isCheckoutSuccess, setIsCheckoutSuccess] = useState(false);
-  const [orderToken, setOrderToken] = useState('');
+  // --- Student Auth States ---
+  const [authStep, setAuthStep] = useState<'id' | 'password' | 'setup_password' | 'logged_in'>('id');
+  const [studentIdInput, setStudentIdInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [studentName, setStudentName] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-  // Derive unique canteens dynamically
-  const canteensList = useMemo(() => {
-    if (!menuItems) return ['All'];
-    const unique = Array.from(new Set(menuItems.map((item) => item.canteen)));
-    return ['All', ...unique];
-  }, [menuItems]);
+  // --- Student Dashboard States ---
+  const [activeStudent, setActiveStudent] = useState<Student | null>(null);
+  const [studentRedemptions, setStudentRedemptions] = useState<Redemption[]>([]);
+  const [studentMealCodes, setStudentMealCodes] = useState<{ slot: string; name: string; raw: string; hash: string }[]>([]);
+  const [qrUrls, setQrUrls] = useState<Record<string, string>>({});
+  const [selectedQrCode, setSelectedQrCode] = useState<{ name: string; hash: string; url: string } | null>(null);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [isRegisteringBiometric, setIsRegisteringBiometric] = useState(false);
+  const [biometricMessage, setBiometricMessage] = useState('');
+  const [hasBiometrics, setHasBiometrics] = useState(false);
 
-  // Filter menu items based on search and canteen tab
-  const filteredMenuItems = useMemo(() => {
-    if (!menuItems) return [];
-    return menuItems.filter((item) => {
-      const matchesCanteen = selectedCanteen === 'All' || item.canteen === selectedCanteen;
-      const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesCanteen && matchesSearch;
-    });
-  }, [menuItems, selectedCanteen, searchQuery]);
+  // --- Warden States ---
+  const [wardenPin, setWardenPin] = useState('');
+  const [isWardenAuthenticated, setIsWardenAuthenticated] = useState(false);
+  const [wardenPinError, setWardenPinError] = useState('');
+  const [wardenSearchId, setWardenSearchId] = useState('');
+  const [wardenStudent, setWardenStudent] = useState<Student | null>(null);
+  const [wardenRedemptions, setWardenRedemptions] = useState<Redemption[]>([]);
+  const [wardenSearchError, setWardenSearchError] = useState('');
+  const [isWardenSearching, setIsWardenSearching] = useState(false);
+  const [scannedToken, setScannedToken] = useState('');
+  const [tokenResult, setTokenResult] = useState<any>(null);
+  const [tokenVerifyError, setTokenVerifyError] = useState('');
+  const [isVerifyingToken, setIsVerifyingToken] = useState(false);
+  const [actionSuccessMessage, setActionSuccessMessage] = useState('');
 
-  // Cart operations
-  const addToCart = (item: MenuItem) => {
-    setCart((prevCart) => {
-      const existing = prevCart.find((i) => i.id === item.id);
-      if (existing) {
-        return prevCart.map((i) => (i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i));
+  // Set date on client & check secure context
+  useEffect(() => {
+    setCurrentDate(new Date().toISOString().split('T')[0]);
+    setIsSecureEnv(window.isSecureContext && !!navigator.credentials);
+  }, []);
+
+  // Compute codes
+  useEffect(() => {
+    function computeCodes() {
+      if (!activeStudent || activeStudent.paidStatus !== 1 || !currentDate) {
+        setStudentMealCodes([]);
+        return;
       }
-      return [...prevCart, { ...item, quantity: 1 }];
-    });
-  };
+      const slots = [
+        { slot: '01', name: 'Breakfast' },
+        { slot: '02', name: 'Lunch' },
+        { slot: '03', name: 'Dinner' }
+      ];
+      const computed = slots.map((item) => {
+        const raw = `${activeStudent.studentId}-${currentDate}-${item.slot}`;
+        const hash = generateClientHMAC(raw, SECRET_KEY);
+        return { slot: item.slot, name: item.name, raw, hash };
+      });
+      setStudentMealCodes(computed);
+    }
+    computeCodes();
+  }, [activeStudent, currentDate]);
 
-  const removeFromCart = (itemId: number) => {
-    setCart((prevCart) => {
-      const existing = prevCart.find((i) => i.id === itemId);
-      if (existing && existing.quantity > 1) {
-        return prevCart.map((i) => (i.id === itemId ? { ...i, quantity: i.quantity - 1 } : i));
+  // Generate QR codes
+  useEffect(() => {
+    async function generateQRs() {
+      const urls: Record<string, string> = {};
+      for (const item of studentMealCodes) {
+        if (!item.hash) continue;
+        try {
+          const url = await QRCode.toDataURL(item.hash, {
+            margin: 1, width: 200,
+            color: { dark: '#0f172a', light: '#ffffff' }
+          });
+          urls[item.slot] = url;
+        } catch (err) { }
       }
-      return prevCart.filter((i) => i.id !== itemId);
-    });
+      setQrUrls(urls);
+    }
+    if (studentMealCodes.length > 0) generateQRs();
+    else setQrUrls({});
+  }, [studentMealCodes]);
+
+  // --- Student Auth Methods ---
+  const handleCheckId = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!studentIdInput || studentIdInput.length !== 5) {
+      setAuthError('Please enter a valid 5-digit Student ID.');
+      return;
+    }
+    setIsAuthenticating(true);
+    setAuthError('');
+    try {
+      const res = await fetch(`/api/auth/check?id=${studentIdInput}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      setStudentName(data.name);
+      setPasswordInput('');
+      setShowPassword(false);
+      if (data.hasPasswordSet) {
+        setAuthStep('password');
+      } else {
+        setAuthStep('setup_password');
+      }
+    } catch (err: any) {
+      setAuthError(err.message || 'Verification failed. Please try again.');
+    } finally {
+      setIsAuthenticating(false);
+    }
   };
 
-  const clearItemFromCart = (itemId: number) => {
-    setCart((prevCart) => prevCart.filter((i) => i.id !== itemId));
+  const handleSetupPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsAuthenticating(true);
+    setAuthError('');
+    try {
+      const res = await fetch(`/api/auth/setup-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId: studentIdInput, password: passwordInput })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      await fetchDashboardData();
+    } catch (err: any) {
+      setAuthError(err.message || 'Setup failed.');
+    } finally {
+      setIsAuthenticating(false);
+    }
   };
 
-  // Cart helper calculations
-  const totalCartCount = cart.reduce((total, item) => total + item.quantity, 0);
-  const subtotalPrice = cart.reduce((total, item) => total + item.price * item.quantity, 0);
-  const packagingFee = subtotalPrice > 0 ? 5 : 0; // standard parcel container charge
-  const cgst = subtotalPrice * 0.025; // 2.5% CGST
-  const sgst = subtotalPrice * 0.025; // 2.5% SGST
-  const grandTotal = subtotalPrice + packagingFee + cgst + sgst;
-
-  const handleCheckout = () => {
-    // Generate simple student collection token
-    const tokenNum = `CB-${Math.floor(100 + Math.random() * 900)}`;
-    setOrderToken(tokenNum);
-    setIsCheckoutSuccess(true);
-    setCart([]);
+  const handlePasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsAuthenticating(true);
+    setAuthError('');
+    try {
+      const res = await fetch(`/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId: studentIdInput, password: passwordInput })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      await fetchDashboardData();
+    } catch (err: any) {
+      setAuthError(err.message || 'Login failed.');
+    } finally {
+      setIsAuthenticating(false);
+    }
   };
 
-  const closeCheckoutState = () => {
-    setIsCheckoutSuccess(false);
-    setIsCartOpen(false);
-    setOrderToken('');
+  const handleBiometricLogin = async () => {
+    setIsAuthenticating(true);
+    setAuthError('');
+    try {
+      const optRes = await fetch(`/api/auth/webauthn/generate-authentication`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId: studentIdInput })
+      });
+      const options = await optRes.json();
+      if (!optRes.ok) throw new Error(options.error);
+
+      let authResp;
+      try {
+        authResp = await startAuthentication({ optionsJSON: options });
+      } catch (err) {
+        throw new Error('Biometric authentication cancelled or failed.');
+      }
+
+      const verifyRes = await fetch(`/api/auth/webauthn/verify-authentication`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId: studentIdInput, response: authResp })
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.verified) throw new Error(verifyData.error || 'Verification failed');
+
+      await fetchDashboardData();
+    } catch (err: any) {
+      setAuthError(err.message || 'Biometric login failed.');
+    } finally {
+      setIsAuthenticating(false);
+    }
   };
 
-  if (isLoading) {
+  const handleRegisterBiometric = async () => {
+    setIsRegisteringBiometric(true);
+    setBiometricMessage('');
+    try {
+      const optRes = await fetch(`/api/auth/webauthn/generate-registration`);
+      const options = await optRes.json();
+      if (!optRes.ok) throw new Error(options.error);
+
+      let attResp;
+      try {
+        attResp = await startRegistration({ optionsJSON: options });
+      } catch (err) {
+        throw new Error('Registration cancelled or failed.');
+      }
+
+      const verifyRes = await fetch(`/api/auth/webauthn/verify-registration`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(attResp)
+      });
+      const verifyData = await verifyRes.json();
+
+      if (!verifyRes.ok || !verifyData.verified) throw new Error(verifyData.error || 'Verification failed');
+
+      setHasBiometrics(true);
+      setBiometricMessage('✓ Device registered successfully!');
+      setTimeout(() => setBiometricMessage(''), 5000);
+    } catch (err: any) {
+      setBiometricMessage(`Error: ${err.message}`);
+      setTimeout(() => setBiometricMessage(''), 5000);
+    } finally {
+      setIsRegisteringBiometric(false);
+    }
+  };
+
+  const fetchDashboardData = async () => {
+    try {
+      const res = await fetch(`/api/students?id=${studentIdInput}&date=${currentDate}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setActiveStudent(data.student);
+      setStudentRedemptions(data.redemptions);
+      setHasBiometrics(!!data.hasBiometrics);
+      setAuthStep('logged_in');
+    } catch (err) {
+      setAuthError('Could not load dashboard data.');
+    }
+  };
+
+  const handleStudentLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    setAuthStep('id');
+    setPasswordInput('');
+    setActiveStudent(null);
+    setStudentRedemptions([]);
+    setStudentMealCodes([]);
+    setSelectedQrCode(null);
+    setHasBiometrics(false);
+  };
+
+  // --- Utility ---
+  const handleCopyCode = (text: string, index: number) => {
+    navigator.clipboard.writeText(text);
+    setCopiedIndex(index);
+    setTimeout(() => setCopiedIndex(null), 2000);
+  };
+
+  const isSlotRedeemed = (slot: string, redemptionList: Redemption[]) => {
+    return redemptionList.some((r) => r.mealSlot === slot);
+  };
+
+  // --- Warden Auth & Methods ---
+  const handleWardenPinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (wardenPin === '1234') {
+      setIsWardenAuthenticated(true);
+      setWardenPinError('');
+    } else {
+      setWardenPinError('Invalid Warden PIN');
+    }
+  };
+
+  const handleWardenExit = () => {
+    setIsWardenAuthenticated(false);
+    setWardenPin('');
+  };
+
+  const handleWardenStudentLookup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!wardenSearchId || wardenSearchId.length !== 5) {
+      setWardenSearchError('Enter a valid 5-digit Student ID.');
+      return;
+    }
+    setIsWardenSearching(true);
+    setWardenSearchError('');
+    try {
+      const res = await fetch(`/api/students?id=${wardenSearchId}&date=${currentDate}`, {
+        headers: { 'x-warden-auth': '1234' }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setWardenStudent(data.student);
+      setWardenRedemptions(data.redemptions);
+    } catch (err: any) {
+      setWardenSearchError(err.message || 'Network error.');
+    } finally {
+      setIsWardenSearching(false);
+    }
+  };
+
+  const handleDirectRedemption = async (studentId: number, slot: string) => {
+    setActionSuccessMessage('');
+    try {
+      const res = await fetch('/api/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-warden-auth': '1234' },
+        body: JSON.stringify({ studentId, date: currentDate, mealSlot: slot })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      const updatedRes = await fetch(`/api/students?id=${studentId}&date=${currentDate}`, { headers: { 'x-warden-auth': '1234' } });
+      const updatedData = await updatedRes.json();
+      if (updatedRes.ok) {
+        setWardenRedemptions(updatedData.redemptions);
+      }
+      setActionSuccessMessage(`Successfully checked in for slot ${slot}!`);
+      setTimeout(() => setActionSuccessMessage(''), 4000);
+    } catch (err: any) {
+      alert(err.message || 'Redemption failed.');
+    }
+  };
+
+  const handleTokenVerification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsVerifyingToken(true);
+    setTokenVerifyError('');
+    try {
+      const res = await fetch('/api/students/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-warden-auth': '1234' },
+        body: JSON.stringify({ token: scannedToken.trim(), date: currentDate })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setTokenResult(data);
+    } catch (err: any) {
+      setTokenVerifyError(err.message || 'Verification failed.');
+    } finally {
+      setIsVerifyingToken(false);
+    }
+  };
+
+  const handleRedeemVerifiedToken = async () => {
+    if (!tokenResult || !tokenResult.valid) return;
+    try {
+      const res = await fetch('/api/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-warden-auth': '1234' },
+        body: JSON.stringify({ studentId: tokenResult.student.studentId, date: currentDate, mealSlot: tokenResult.mealSlot })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setActionSuccessMessage(`Student checked in for ${tokenResult.mealName}.`);
+      setTokenResult(null);
+      setScannedToken('');
+      setTimeout(() => setActionSuccessMessage(''), 4000);
+    } catch (err: any) {
+      alert(err.message || 'Network error.');
+    }
+  };
+
+  // --- Components ---
+  const SecuritySetupBlock = () => {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-slate-100">
-        <div className="w-12 h-12 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
-        <p className="mt-4 text-slate-400 font-bold text-sm tracking-wide">Loading Campus Database...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-slate-100">
-        <div className="bg-slate-900/60 p-8 rounded-2xl border border-red-500/30 max-w-md shadow-2xl backdrop-blur">
-          <span className="text-4xl">⚠️</span>
-          <h2 className="text-xl font-black text-red-400 mt-4">Database Offline</h2>
-          <p className="text-slate-400 mt-2 text-sm">Could not establish contact with SQLite database. Re-check prisma client or environment setup.</p>
+      <div className="glass-card p-5 rounded-2xl flex flex-col items-center text-center border border-primary-900/30 bg-primary-950/10 space-y-3">
+        <div className="space-y-1">
+          <h4 className="text-sm font-black text-primary-100 flex items-center justify-center gap-2">🔐 Passwordless Login</h4>
+          <p className="text-xs text-primary-300/70">
+            {!isSecureEnv ? 'Passkeys and Biometrics require a secure HTTPS connection. They are disabled on HTTP local networks.' : (hasBiometrics ? 'You have registered this device. You can register again if you face issues.' : 'Register this device to sign in instantly with Biometrics next time.')}
+          </p>
         </div>
+        <button onClick={handleRegisterBiometric} disabled={isRegisteringBiometric || !isSecureEnv} className={`w-full max-w-[200px] px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${!isSecureEnv ? 'bg-slate-800/50 text-slate-500 border border-slate-800/50 cursor-not-allowed' : 'bg-primary-900/50 hover:bg-primary-600 border border-primary-700/50 text-white cursor-pointer'}`}>
+          {isRegisteringBiometric ? 'Registering...' : (hasBiometrics ? 'Re-register Device' : 'Register Passkey/Biometrics')}
+        </button>
+        {biometricMessage && <p className="text-[11px] text-emerald-400 font-bold bg-emerald-950/20 px-3 py-1.5 rounded-lg w-full">{biometricMessage}</p>}
       </div>
     );
-  }
+  };
 
   return (
     <main className="min-h-screen bg-slate-950 pb-24 text-slate-100 relative">
-      {/* STICKY GLASS NAVBAR */}
-      <nav className="sticky top-0 z-40 w-full glass border-b border-slate-900 transition-all duration-300">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
-          {/* Logo with sleek cloche icon */}
+      <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-primary-500/5 rounded-full filter blur-[120px] -z-10 animate-pulse-slow"></div>
+      <div className="absolute top-1/3 right-1/4 w-[400px] h-[400px] bg-purple-500/5 rounded-full filter blur-[100px] -z-10 animate-float"></div>
+
+      {/* NAVBAR */}
+      <nav className="sticky top-0 z-40 w-full glass border-b border-slate-900/60">
+        <div className="max-w-md mx-auto px-4 h-16 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="p-1.5 bg-primary-950/40 rounded-lg border border-primary-900/40 text-primary-400">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-                <path d="M3 19h18" />
-                <path d="M5 19a7 7 0 0 1 14 0" />
-                <path d="M12 5V3" />
-                <circle cx="12" cy="3" r="1" />
-              </svg>
+            <div className="p-2 bg-primary-950/40 rounded-xl border border-primary-900/30 text-primary-400">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
             </div>
             <div>
-              <h1 className="text-lg font-black tracking-tight text-slate-100 leading-none">
-                CampusByte
-              </h1>
-              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">Student Dining Dashboard</p>
+              <h1 className="text-sm font-black tracking-tight text-white leading-none">CampusByte</h1>
             </div>
           </div>
-
-          {/* Cart Button */}
-          <button
-            onClick={() => setIsCartOpen(true)}
-            className="group relative flex items-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-4 py-2 rounded-xl font-bold transition-all duration-150 active:scale-95 cursor-pointer text-xs"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={2.2}
-              stroke="currentColor"
-              className="w-4 h-4"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
-              />
-            </svg>
-            <span>Cart</span>
-            {totalCartCount > 0 && (
-              <span className="bg-white text-primary-900 text-[10px] font-black min-w-4.5 h-4.5 rounded px-1 flex items-center justify-center">
-                {totalCartCount}
-              </span>
-            )}
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="bg-slate-900/80 p-1 rounded-xl border border-slate-800 flex">
+              <button onClick={() => { setViewMode('student'); handleWardenExit(); }} className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${viewMode === 'student' ? 'bg-primary-600 text-white shadow' : 'text-slate-400'}`}>Portal</button>
+              <button onClick={() => setViewMode('warden')} className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${viewMode === 'warden' ? 'bg-primary-600 text-white shadow' : 'text-slate-400'}`}>Warden</button>
+            </div>
+          </div>
         </div>
       </nav>
 
-      {/* DASHBOARD HEADER */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-4 relative z-10">
-        <div className="max-w-3xl space-y-2">
-          <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-100 leading-none">
-            Canteen Menu & Pre-Ordering
-          </h2>
-          <p className="text-slate-400 text-xs sm:text-sm font-medium">
-            Search live menu items, select dining outlets, and submit items to generate your collection token.
-          </p>
+      {/* --- STUDENT PORTAL --- */}
+      {viewMode === 'student' && (
+        <section className="max-w-md mx-auto px-4 mt-8">
 
-          {/* SEARCH BAR */}
-          <div className="pt-4 max-w-xl">
-            <div className="relative flex items-center bg-slate-900/60 rounded-xl border border-slate-800 shadow-inner p-1">
-              <div className="pl-3 text-slate-500">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={2}
-                  stroke="currentColor"
-                  className="w-4 h-4"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.637 10.637Z" />
-                </svg>
+          {authStep === 'id' && (
+            <div className="glass-card w-full p-6 sm:p-8 rounded-3xl space-y-6 text-left animate-fade-in shadow-xl">
+              <div className="text-center pb-2">
+                <h3 className="text-2xl font-black text-white">Meal Portal</h3>
+                <p className="text-xs text-slate-400 mt-1">Enter your 5-digit Student ID to continue.</p>
               </div>
-              <input
-                type="text"
-                placeholder="Search food items..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-transparent py-1.5 px-2.5 text-slate-200 placeholder-slate-500 text-xs font-medium focus:outline-none"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="p-1 text-slate-500 hover:text-slate-300 transition-colors"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
+              <form onSubmit={handleCheckId} className="space-y-4">
+                <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={5} placeholder="Student ID" value={studentIdInput} onChange={(e) => setStudentIdInput(e.target.value.replace(/\D/g, ''))} className="w-full bg-slate-950 border border-slate-900 rounded-xl py-3.5 px-4 text-base focus:border-primary-500 font-black tracking-widest text-center text-slate-200" required />
+                {authError && <p className="text-[11px] text-rose-400 font-bold bg-rose-950/10 border border-rose-500/20 px-3 py-1.5 rounded-lg text-center">⚠️ {authError}</p>}
+                <button type="submit" disabled={isAuthenticating} className="w-full gradient-btn text-white text-sm font-bold py-3.5 rounded-xl">{isAuthenticating ? 'Checking...' : 'Continue'}</button>
+              </form>
             </div>
-          </div>
-        </div>
-      </section>
+          )}
 
-      {/* FILTER & MENU GRID SECTION */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 relative z-10">
-        {/* Dynamic Canteen Filters */}
-        <div className="flex flex-col gap-3 border-b border-slate-900 pb-4 mb-6">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-none">
-            {canteensList.map((canteen) => {
-              const isActive = selectedCanteen === canteen;
-              return (
-                <button
-                  key={canteen}
-                  onClick={() => setSelectedCanteen(canteen)}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all duration-100 cursor-pointer border ${
-                    isActive
-                      ? 'bg-primary-600 text-white border-primary-500'
-                      : 'bg-slate-900/60 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-800'
-                  }`}
-                >
-                  {canteen === 'All' ? '🏢 All Outlets' : canteen}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* FOOD CARD LISTING */}
-        {filteredMenuItems.length === 0 ? (
-          <div className="bg-slate-900/40 rounded-2xl border border-slate-800 p-8 text-center max-w-sm mx-auto space-y-3">
-            <span className="text-3xl block">🍽️</span>
-            <h4 className="text-sm font-bold text-slate-300">No matching items found</h4>
-            <p className="text-slate-500 text-xs font-medium">
-              Try adjusting your query or selecting other dining counters.
-            </p>
-            {(searchQuery || selectedCanteen !== 'All') && (
-              <button
-                onClick={() => {
-                  setSearchQuery('');
-                  setSelectedCanteen('All');
-                }}
-                className="bg-primary-950/60 hover:bg-primary-950 text-primary-300 text-[11px] font-bold px-3 py-1.5 rounded-lg border border-primary-900/40 cursor-pointer"
-              >
-                Reset Filter
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredMenuItems.map((item) => {
-              const cartItem = cart.find((i) => i.id === item.id);
-              const hasQuantity = (cartItem?.quantity ?? 0) > 0;
-
-              return (
-                <div
-                  key={item.id}
-                  className="bg-slate-900/30 border border-slate-900/80 rounded-2xl p-4 flex flex-col justify-between hover:border-slate-800 transition-all duration-150 relative"
-                >
-                  <div className="space-y-3">
-                    {/* Header Tag */}
-                    <div className="flex justify-between items-center">
-                      <span className="text-[9px] bg-slate-900 text-slate-400 font-extrabold px-2 py-0.5 rounded border border-slate-800">
-                        {item.canteen}
-                      </span>
-                      <span className="flex items-center gap-1 text-[9px] text-emerald-400 font-bold bg-emerald-950/20 px-2 py-0.5 rounded border border-emerald-900/20">
-                        Available
-                      </span>
-                    </div>
-
-                    {/* Food Name & Visual Emoji */}
-                    <div className="flex gap-3 items-center">
-                      <span className="text-2xl p-2 bg-slate-900 rounded-lg border border-slate-800">
-                        {getFoodEmoji(item.name)}
-                      </span>
-                      <h4 className="text-sm font-extrabold text-slate-200 leading-snug">
-                        {item.name}
-                      </h4>
-                    </div>
-                  </div>
-
-                  {/* Pricing and Action Button */}
-                  <div className="mt-4 pt-3 border-t border-slate-900 flex justify-between items-center">
-                    <div className="flex flex-col">
-                      <span className="text-slate-500 text-[8px] font-bold uppercase tracking-wider">Price</span>
-                      <span className="text-base font-black text-slate-100">₹{item.price.toFixed(0)}</span>
-                    </div>
-
-                    {hasQuantity ? (
-                      <div className="flex items-center bg-primary-600 text-white rounded-lg overflow-hidden border border-primary-700">
-                        <button
-                          onClick={() => removeFromCart(item.id)}
-                          className="px-2.5 py-1.5 hover:bg-primary-700 transition cursor-pointer"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3 h-3">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
-                          </svg>
-                        </button>
-                        <span className="px-2 text-xs font-black w-6 text-center">{cartItem?.quantity}</span>
-                        <button
-                          onClick={() => addToCart(item)}
-                          className="px-2.5 py-1.5 hover:bg-primary-700 transition cursor-pointer"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3 h-3">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                          </svg>
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => addToCart(item)}
-                        className="bg-slate-800 hover:bg-primary-600 text-slate-100 text-xs px-3.5 py-1.5 rounded-lg font-bold transition cursor-pointer"
-                      >
-                        Add
-                      </button>
-                    )}
-                  </div>
+          {authStep === 'setup_password' && (
+            <div className="glass-card w-full p-6 sm:p-8 rounded-3xl space-y-6 text-left animate-fade-in shadow-xl">
+              <div>
+                <h3 className="text-xl font-black text-white">Create Password</h3>
+                <p className="text-xs text-slate-400 mt-1">Hi {studentName}, secure your meal passes by creating a strong password.</p>
+                <ul className="text-[10px] text-slate-500 mt-3 space-y-1 font-medium bg-slate-900 p-3 rounded-xl border border-slate-800">
+                  <li>✓ At least 8 characters</li>
+                  <li>✓ Contains letters & numbers</li>
+                  <li>✓ At least 1 special character (!@#$)</li>
+                </ul>
+              </div>
+              <form onSubmit={handleSetupPassword} className="space-y-4">
+                <div className="relative">
+                  <input type={showPassword ? "text" : "password"} placeholder="New Password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full bg-slate-950 border border-slate-900 rounded-xl py-3.5 pl-4 pr-12 text-base focus:border-primary-500 text-slate-200" required />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-3.5 text-slate-400 text-xs font-bold">{showPassword ? 'Hide' : 'Show'}</button>
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
+                {authError && <p className="text-[11px] text-rose-400 font-bold bg-rose-950/10 border border-rose-500/20 px-3 py-1.5 rounded-lg">⚠️ {authError}</p>}
+                <button type="submit" disabled={isAuthenticating} className="w-full gradient-btn text-white text-sm font-bold py-3.5 rounded-xl">{isAuthenticating ? 'Setting up...' : 'Save & Sign In'}</button>
+              </form>
+            </div>
+          )}
 
-      {/* CART DRAWER SIDEBAR & BACKDROP OVERLAY */}
-      {isCartOpen && (
-        <div className="fixed inset-0 z-50 overflow-hidden">
-          {/* Backdrop */}
-          <div
-            onClick={() => {
-              if (isCheckoutSuccess) {
-                closeCheckoutState();
-              } else {
-                setIsCartOpen(false);
-              }
-            }}
-            className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity duration-300 animate-fade-in"
-          />
-
-          <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
-            <div className="w-screen max-w-md bg-slate-950 border-l border-slate-900 shadow-2xl flex flex-col justify-between animate-slide-in relative">
-              {/* Drawer Header */}
-              <div className="px-6 py-4 border-b border-slate-900 flex justify-between items-center bg-slate-900/30">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">🛒</span>
-                  <h3 className="text-sm font-bold text-slate-100">Order List</h3>
-                  {totalCartCount > 0 && (
-                    <span className="bg-primary-950 text-primary-300 border border-primary-900/30 text-[9px] font-bold px-2 py-0.5 rounded">
-                      {totalCartCount} items
-                    </span>
-                  )}
+          {authStep === 'password' && (
+            <div className="glass-card w-full p-6 sm:p-8 rounded-3xl space-y-6 text-left animate-fade-in shadow-xl">
+              <div className="flex items-center gap-3 mb-2 bg-slate-900/50 p-3 rounded-2xl border border-slate-800">
+                <div className="w-10 h-10 rounded-full bg-primary-900 flex items-center justify-center font-black text-primary-300">{studentName.charAt(0)}</div>
+                <div>
+                  <h3 className="text-sm font-black text-white">{studentName}</h3>
+                  <p className="text-[10px] text-slate-500">ID: {studentIdInput}</p>
                 </div>
-                <button
-                  onClick={() => {
-                    if (isCheckoutSuccess) {
-                      closeCheckoutState();
-                    } else {
-                      setIsCartOpen(false);
-                    }
-                  }}
-                  className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 transition-colors cursor-pointer"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                  </svg>
-                </button>
+              </div>
+              <form onSubmit={handlePasswordLogin} className="space-y-4">
+                <div className="relative">
+                  <input type={showPassword ? "text" : "password"} placeholder="Enter Password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full bg-slate-950 border border-slate-900 rounded-xl py-3.5 pl-4 pr-12 text-base focus:border-primary-500 text-slate-200" required />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-3.5 text-slate-400 text-xs font-bold">{showPassword ? 'Hide' : 'Show'}</button>
+                </div>
+                {authError && <p className="text-[11px] text-rose-400 font-bold bg-rose-950/10 border border-rose-500/20 px-3 py-1.5 rounded-lg text-center">⚠️ {authError}</p>}
+                <button type="submit" disabled={isAuthenticating} className="w-full gradient-btn text-white text-sm font-bold py-3.5 rounded-xl">{isAuthenticating ? 'Logging in...' : 'Sign In'}</button>
+              </form>
+
+              <div className="relative py-2">
+                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-800"></div></div>
+                <div className="relative flex justify-center"><span className="bg-slate-900/60 px-2 text-[10px] text-slate-500 font-bold uppercase tracking-widest">OR</span></div>
               </div>
 
-              {/* Drawer Body content */}
-              <div className="flex-1 overflow-y-auto px-6 py-4">
-                {isCheckoutSuccess ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center space-y-4 animate-fade-in text-slate-100">
-                    <div className="w-12 h-12 bg-emerald-950/30 border border-emerald-500/20 text-emerald-400 rounded-lg flex items-center justify-center text-xl">
-                      ✓
-                    </div>
-                    <h4 className="text-lg font-black text-emerald-400">Order Token Generated</h4>
-                    <div className="bg-slate-900 border border-slate-800 px-6 py-4 rounded-xl shadow-inner my-2">
-                      <p className="text-[10px] text-slate-500 uppercase font-black tracking-wider">Collection Code</p>
-                      <p className="text-3xl font-black text-primary-400 tracking-wider mt-1">{orderToken}</p>
-                    </div>
-                    <p className="text-slate-400 font-medium text-xs max-w-xs leading-relaxed">
-                      Please show this token code at the canteen billing counter to pay and collect your items.
-                    </p>
-                    <button
-                      onClick={closeCheckoutState}
-                      className="bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs px-4 py-2 rounded-lg border border-slate-800 cursor-pointer mt-4"
-                    >
-                      Done / Close
-                    </button>
+              <button onClick={handleBiometricLogin} disabled={isAuthenticating || !isSecureEnv} className={`w-full ${!isSecureEnv ? 'bg-slate-950 text-slate-600 cursor-not-allowed border-slate-900' : 'bg-slate-900 hover:bg-slate-800 text-white cursor-pointer border-slate-800'} border text-sm font-bold py-3.5 rounded-xl flex justify-center items-center gap-2 transition-colors`}>
+                <span className={`text-lg ${!isSecureEnv ? 'opacity-50 grayscale' : ''}`}>🤳</span> {isSecureEnv ? 'Passkey / Biometrics' : 'Biometrics Require HTTPS'}
+              </button>
+
+              <button onClick={() => setAuthStep('id')} className="w-full text-[10px] text-slate-500 hover:text-slate-300 font-bold underline mt-2 cursor-pointer text-center">Not {studentName}?</button>
+            </div>
+          )}
+
+          {authStep === 'logged_in' && activeStudent && (
+            <div className="space-y-5 animate-fade-in">
+              <div className="glass-card p-5 rounded-3xl flex justify-between items-center border-l-4 border-l-emerald-500 shadow-xl">
+                <div className="space-y-1 text-left">
+                  <h3 className="text-lg font-black text-white leading-tight">{activeStudent.name}</h3>
+                  <p className="text-[10px] text-slate-500">ID: <span className="text-slate-300 font-bold">{activeStudent.studentId}</span></p>
+                </div>
+                <button onClick={handleStudentLogout} className="px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-xl text-slate-400 hover:text-slate-200 text-[10px] font-bold">Sign Out</button>
+              </div>
+
+              {!hasBiometrics && <SecuritySetupBlock />}
+
+              {activeStudent.paidStatus !== 1 ? (
+                <div className="bg-rose-950/20 border border-rose-500/25 p-6 rounded-3xl text-center space-y-4 shadow-xl">
+                  <h4 className="text-sm font-black text-rose-400">Access Suspended</h4>
+                  <p className="text-xs text-slate-400">Mess fee pending. Please clear your dues.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="text-left border-b border-slate-900 pb-2 flex justify-between items-end">
+                    <h3 className="text-base font-black text-white">Daily Passes</h3>
+                    <span className="text-[10px] text-primary-400 font-bold">{currentDate}</span>
                   </div>
-                ) : cart.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center space-y-3">
-                    <span className="text-4xl text-slate-600">🛒</span>
-                    <h4 className="text-sm font-bold text-slate-400">Your basket is empty</h4>
-                    <p className="text-slate-500 text-xs max-w-xs">
-                      Select items from the canteen listing to request an order token.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-4 divide-y divide-slate-900">
-                    {cart.map((item) => (
-                      <div key={item.id} className="flex justify-between items-center pt-4 first:pt-0">
-                        <div className="flex items-center gap-3">
-                          <span className="text-2xl p-1 bg-slate-900 rounded border border-slate-800">{getFoodEmoji(item.name)}</span>
-                          <div>
-                            <h5 className="font-bold text-slate-200 text-xs leading-snug">{item.name}</h5>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-[8px] bg-slate-900 text-slate-400 border border-slate-800 px-1.5 py-0.5 rounded uppercase font-extrabold">
-                                {item.canteen}
-                              </span>
-                              <span className="text-slate-500 text-xs font-bold">₹{item.price}</span>
+
+                  <div className="grid gap-4 grid-cols-1">
+                    {studentMealCodes.map((item, index) => {
+                      const redeemed = isSlotRedeemed(item.slot, studentRedemptions);
+                      const qrUrl = qrUrls[item.slot] || '';
+                      return (
+                        <div key={item.slot} className={`glass-card p-4 rounded-2xl flex items-center justify-between relative shadow-lg ${redeemed ? 'opacity-50' : 'border border-primary-900/30'}`}>
+                          <div className="space-y-1.5 flex-1 pr-4">
+                            <span className="text-xs text-slate-300 font-black uppercase tracking-wider">{item.name}</span>
+                            <div className={`inline-block text-[9px] px-2 py-0.5 rounded font-black uppercase ${redeemed ? 'bg-slate-900 text-slate-500' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                              {redeemed ? 'Redeemed' : 'Active'}
+                            </div>
+                            <div className="pt-2">
+                              <p className="text-[9px] font-black text-primary-400 font-mono truncate">{item.hash ? item.hash.substring(0, 16) + '...' : 'Generating...'}</p>
                             </div>
                           </div>
-                        </div>
 
-                        <div className="flex items-center gap-3">
-                          {/* Quantity control inside cart */}
-                          <div className="flex items-center border border-slate-800 rounded overflow-hidden bg-slate-900/50">
-                            <button
-                              onClick={() => removeFromCart(item.id)}
-                              className="px-2 py-0.5 text-slate-400 hover:bg-slate-800 transition cursor-pointer"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-2.5 h-2.5">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
-                              </svg>
-                            </button>
-                            <span className="px-1.5 text-xs font-black text-slate-200 min-w-3 text-center">{item.quantity}</span>
-                            <button
-                              onClick={() => addToCart(item)}
-                              className="px-2 py-0.5 text-slate-400 hover:bg-slate-800 transition cursor-pointer"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-2.5 h-2.5">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                              </svg>
-                            </button>
+                          <div className="flex-shrink-0">
+                            {qrUrl && (
+                              <button disabled={redeemed} onClick={() => setSelectedQrCode({ name: item.name, hash: item.hash, url: qrUrl })} className={`p-1.5 bg-white rounded-xl shadow-md ${!redeemed && 'cursor-pointer hover:scale-105 transition-transform'}`}>
+                                <img src={qrUrl} className="w-16 h-16 pointer-events-none" />
+                              </button>
+                            )}
                           </div>
-                          
-                          {/* Trash button */}
-                          <button
-                            onClick={() => clearItemFromCart(item.id)}
-                            className="p-1 hover:bg-red-950/20 text-slate-500 hover:text-red-400 rounded transition cursor-pointer"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                            </svg>
-                          </button>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
-                )}
-              </div>
-
-              {/* Drawer Footer summary */}
-              {!isCheckoutSuccess && cart.length > 0 && (
-                <div className="border-t border-slate-900 bg-slate-900/20 px-6 py-4 space-y-4">
-                  <div className="space-y-1.5 text-xs text-slate-400 font-medium">
-                    <div className="flex justify-between">
-                      <span>Subtotal</span>
-                      <span className="font-bold text-slate-200">₹{subtotalPrice.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Parcel Container Fee</span>
-                      <span className="font-bold text-slate-200">₹{packagingFee.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>CGST (2.5%)</span>
-                      <span className="font-bold text-slate-200">₹{cgst.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>SGST (2.5%)</span>
-                      <span className="font-bold text-slate-200">₹{sgst.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between border-t border-slate-800 pt-2 text-xs font-black text-slate-200">
-                      <span>Total Amount</span>
-                      <span className="text-primary-400 text-sm">₹{grandTotal.toFixed(2)}</span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={handleCheckout}
-                    className="w-full bg-primary-600 hover:bg-primary-500 text-white font-bold py-2.5 rounded-xl transition duration-150 active:scale-98 cursor-pointer text-center text-xs block"
-                  >
-                    Generate Order Token (₹{grandTotal.toFixed(0)})
-                  </button>
                 </div>
               )}
+
+              {hasBiometrics && <div className="pt-6"><SecuritySetupBlock /></div>}
             </div>
-          </div>
-        </div>
+          )}
+
+          {/* QR Modal */}
+          {selectedQrCode && (
+            <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+              <div className="glass-card max-w-[320px] w-full p-6 rounded-3xl text-center space-y-5 relative border border-primary-500/30 shadow-2xl">
+                <button onClick={() => setSelectedQrCode(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 bg-slate-900 rounded-full w-7 h-7 flex items-center justify-center cursor-pointer">✕</button>
+                <div className="space-y-1"><h4 className="text-lg font-black text-white">{selectedQrCode.name} Pass</h4></div>
+                <div className="flex justify-center bg-white p-3 rounded-2xl shadow-inner"><img src={selectedQrCode.url} className="w-48 h-48 pointer-events-none" /></div>
+                <div className="bg-slate-900 p-3 rounded-xl border border-slate-800">
+                  <p className="text-[10px] text-slate-500 uppercase font-black mb-1">Pass Code</p>
+                  <p className="text-[11px] font-mono text-primary-400 break-all leading-tight">{selectedQrCode.hash}</p>
+                </div>
+                <button onClick={() => setSelectedQrCode(null)} className="w-full bg-slate-900 text-slate-300 text-xs font-bold py-3.5 rounded-xl cursor-pointer">Close Window</button>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* --- WARDEN DASHBOARD --- */}
+      {viewMode === 'warden' && (
+        <section className="max-w-md mx-auto px-4 mt-8 text-left">
+          {!isWardenAuthenticated ? (
+            <div className="glass-card w-full p-8 rounded-3xl text-center space-y-6 shadow-xl">
+              <h3 className="text-xl font-black text-white">Warden Auth</h3>
+              <form onSubmit={handleWardenPinSubmit} className="space-y-4">
+                <div className="relative">
+                  <input type={showPassword ? "text" : "password"} inputMode="numeric" pattern="[0-9]*" maxLength={4} placeholder="PIN (1234)" value={wardenPin} onChange={(e) => setWardenPin(e.target.value.replace(/\D/g, ''))} className="w-full text-center bg-slate-900 border border-slate-800 rounded-xl py-3 pl-4 pr-12 text-xl tracking-[0.5em] font-black focus:border-primary-500 text-white" />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-4 text-slate-400 text-xs font-bold">{showPassword ? 'Hide' : 'Show'}</button>
+                </div>
+                {wardenPinError && <p className="text-[11px] text-rose-400">{wardenPinError}</p>}
+                <button type="submit" className="w-full gradient-btn text-white text-sm font-bold py-3.5 rounded-xl">Authorize</button>
+              </form>
+            </div>
+          ) : (
+            <div className="space-y-5 animate-fade-in">
+              <div className="glass-card p-5 rounded-3xl flex justify-between items-center shadow-lg">
+                <h3 className="text-base font-black text-white">Warden Console</h3>
+                <button onClick={handleWardenExit} className="bg-slate-900 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-bold">Exit</button>
+              </div>
+
+              <div className="space-y-5">
+                <div className="glass-card p-5 rounded-3xl space-y-4 shadow-lg">
+                  <h4 className="text-sm font-black text-white">Scan Token</h4>
+                  <form onSubmit={handleTokenVerification} className="space-y-3">
+                    <input type="text" placeholder="Paste Pass Code" value={scannedToken} onChange={(e) => setScannedToken(e.target.value)} className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-3 text-base font-mono" />
+                    <button type="submit" className="w-full bg-primary-600 text-white py-3 rounded-xl text-sm font-bold">Verify Code</button>
+                  </form>
+                  {tokenResult && (
+                    <div className="mt-4 p-4 rounded-2xl bg-slate-900/50 border border-slate-800 space-y-3">
+                      <p className="text-xs text-white"><strong>Student:</strong> {tokenResult.student.name} ({tokenResult.student.studentId})</p>
+                      <p className="text-xs text-white"><strong>Slot:</strong> {tokenResult.mealName}</p>
+                      {tokenResult.valid && !tokenResult.redeemed ? (
+                        <button onClick={handleRedeemVerifiedToken} className="w-full bg-emerald-600 text-white text-xs font-black py-3 rounded-xl shadow-lg shadow-emerald-900/20">Approve Meal</button>
+                      ) : (
+                        <p className="text-xs text-rose-400 font-bold bg-rose-950/30 p-2 rounded-lg text-center">Already Redeemed or Invalid</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="glass-card p-5 rounded-3xl space-y-4 shadow-lg">
+                  <h4 className="text-sm font-black text-white">Manual Check-In</h4>
+                  <form onSubmit={handleWardenStudentLookup} className="flex gap-2">
+                    <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={5} placeholder="Student ID" value={wardenSearchId} onChange={(e) => setWardenSearchId(e.target.value.replace(/\D/g, ''))} className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-3 text-base font-black tracking-widest text-center" />
+                    <button type="submit" className="bg-primary-600 text-white px-5 rounded-xl text-sm font-bold">Search</button>
+                  </form>
+                  {wardenStudent && (
+                    <div className="mt-4 space-y-3 bg-slate-900/40 p-4 rounded-2xl border border-slate-800">
+                      <p className="text-sm font-black text-white">{wardenStudent.name}</p>
+                      {['01', '02', '03'].map(slot => {
+                        const redeemed = isSlotRedeemed(slot, wardenRedemptions);
+                        return (
+                          <div key={slot} className="flex justify-between items-center p-2.5 bg-slate-950/60 border border-slate-900 rounded-xl">
+                            <span className="text-xs font-bold text-slate-300">{slot === '01' ? 'Breakfast' : slot === '02' ? 'Lunch' : 'Dinner'}</span>
+                            {redeemed ? <span className="text-[10px] text-slate-500 font-black uppercase">Redeemed</span> : <button onClick={() => handleDirectRedemption(wardenStudent.studentId, slot)} className="text-[10px] bg-primary-900/80 hover:bg-primary-600 text-white px-4 py-1.5 rounded-lg font-bold transition-colors">Check In</button>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
       )}
     </main>
   );
