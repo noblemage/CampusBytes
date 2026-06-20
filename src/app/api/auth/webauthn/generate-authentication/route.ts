@@ -20,7 +20,7 @@ export async function POST(request: Request) {
 
   const options = await generateAuthenticationOptions({
     rpID: getRpID(request),
-    allowCredentials: student.authenticators.map(auth => ({
+    allowCredentials: student.authenticators.map((auth: any) => ({
       id: auth.credentialID,
       type: 'public-key',
     })),
