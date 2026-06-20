@@ -175,7 +175,6 @@ export default function Home() {
   };
 
   const handleBiometricLogin = async () => {
-    if (!hasBiometrics) return;
     setIsAuthenticating(true);
     try {
       const optRes = await fetch(`/api/auth/webauthn/generate-authentication`, {
