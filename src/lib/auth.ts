@@ -1,7 +1,8 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_campusbyte_2026');
+if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 const COOKIE_NAME = 'student_session';
 const COOKIE_NAME_WARDEN = 'warden_session';
 
@@ -16,7 +17,7 @@ export async function createSessionCookie(studentId: number) {
   cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: 'strict',
     path: '/',
     maxAge: 60 * 60 * 24 // 1 day
   });
@@ -52,7 +53,7 @@ export async function createWardenSessionCookie(wardenId: number) {
   cookieStore.set(COOKIE_NAME_WARDEN, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: 'strict',
     path: '/',
     maxAge: 60 * 60 * 24 // 1 day
   });

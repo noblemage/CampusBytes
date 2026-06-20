@@ -7,7 +7,7 @@ import { checkRateLimit, getIp } from '@/lib/rate-limit';
 export async function POST(request: Request) {
   try {
     const ip = getIp(request);
-    const { success } = await checkRateLimit(ip, 5, 60 * 1000); // 5 requests per minute
+    const { success } = await checkRateLimit(`warden:${ip}`, 5, 60 * 1000); // 5 requests per minute
     
     if (!success) {
       return NextResponse.json({ error: "Too many login attempts. Please try again later." }, { status: 429 });
