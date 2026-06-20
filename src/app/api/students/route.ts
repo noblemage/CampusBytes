@@ -1,10 +1,18 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getSession } from '@/lib/auth';
+import { getSession, getWardenSession } from '@/lib/auth';
+import { checkRateLimit, getIp } from '@/lib/rate-limit';
 
 // GET /api/students?id=XXXXX&date=YYYY-MM-DD
 export async function GET(request: Request) {
   try {
+    const ip = getIp(request);
+    const { success } = await checkRateLimit(ip, 20, 60 * 1000); // 20 requests per minute
+    
+    if (!success) {
+      return NextResponse.json({ error: "Rate limit exceeded. Please try again later." }, { status: 429 });
+    }
+
     const { searchParams } = new URL(request.url);
     const idStr = searchParams.get('id');
     const dateStr = searchParams.get('date'); // e.g. "2026-06-18"
@@ -19,11 +27,11 @@ export async function GET(request: Request) {
     }
 
     const session = await getSession();
-    const wardenAuth = request.headers.get('x-warden-auth');
-    if (!session && wardenAuth !== '1234') {
+    const wardenSession = await getWardenSession();
+    if (!session && !wardenSession) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (session && session.studentId !== studentId && wardenAuth !== '1234') {
+    if (session && session.studentId !== studentId && !wardenSession) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -66,8 +74,8 @@ export async function GET(request: Request) {
 // Redeems a meal slot for a student
 export async function POST(request: Request) {
   try {
-    const wardenAuth = request.headers.get('x-warden-auth');
-    if (wardenAuth !== '1234') {
+    const wardenSession = await getWardenSession();
+    if (!wardenSession) {
       return NextResponse.json({ error: "Unauthorized Warden Access" }, { status: 401 });
     }
 
@@ -107,7 +115,8 @@ export async function POST(request: Request) {
         data: {
           studentId: sId,
           date,
-          mealSlot
+          mealSlot,
+          wardenId: wardenSession.wardenId
         }
       });
       return NextResponse.json({ success: true, redemption });

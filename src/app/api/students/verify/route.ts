@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
+import { getWardenSession } from '@/lib/auth';
 
 const SECRET_KEY = 'Janet123';
 
@@ -13,8 +14,8 @@ function generateHMAC(data: string): string {
 // Accepts a token (can be HMAC hash OR raw code) and verifies its validity
 export async function POST(request: Request) {
   try {
-    const wardenAuth = request.headers.get('x-warden-auth');
-    if (wardenAuth !== '1234') {
+    const wardenSession = await getWardenSession();
+    if (!wardenSession) {
       return NextResponse.json({ error: "Unauthorized Warden Access" }, { status: 401 });
     }
 

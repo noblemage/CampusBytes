@@ -34,7 +34,6 @@ function generateClientHMAC(message: string, secret: string): string {
 }
 
 export default function Home() {
-  const [viewMode, setViewMode] = useState<'student' | 'warden'>('student');
   const [currentDate, setCurrentDate] = useState('');
   const [isSecureEnv, setIsSecureEnv] = useState(true);
 
@@ -52,26 +51,10 @@ export default function Home() {
   const [studentRedemptions, setStudentRedemptions] = useState<Redemption[]>([]);
   const [studentMealCodes, setStudentMealCodes] = useState<{ slot: string; name: string; raw: string; hash: string }[]>([]);
   const [qrUrls, setQrUrls] = useState<Record<string, string>>({});
-  const [selectedQrCode, setSelectedQrCode] = useState<{ name: string; hash: string; url: string } | null>(null);
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [selectedQrCode, setSelectedQrCode] = useState<{ name: string; hash: string; url: string; slot: string } | null>(null);
   const [isRegisteringBiometric, setIsRegisteringBiometric] = useState(false);
   const [biometricMessage, setBiometricMessage] = useState('');
   const [hasBiometrics, setHasBiometrics] = useState(false);
-
-  // --- Warden States ---
-  const [wardenPin, setWardenPin] = useState('');
-  const [isWardenAuthenticated, setIsWardenAuthenticated] = useState(false);
-  const [wardenPinError, setWardenPinError] = useState('');
-  const [wardenSearchId, setWardenSearchId] = useState('');
-  const [wardenStudent, setWardenStudent] = useState<Student | null>(null);
-  const [wardenRedemptions, setWardenRedemptions] = useState<Redemption[]>([]);
-  const [wardenSearchError, setWardenSearchError] = useState('');
-  const [isWardenSearching, setIsWardenSearching] = useState(false);
-  const [scannedToken, setScannedToken] = useState('');
-  const [tokenResult, setTokenResult] = useState<any>(null);
-  const [tokenVerifyError, setTokenVerifyError] = useState('');
-  const [isVerifyingToken, setIsVerifyingToken] = useState(false);
-  const [actionSuccessMessage, setActionSuccessMessage] = useState('');
 
   // Set date on client & check secure context
   useEffect(() => {
@@ -109,8 +92,8 @@ export default function Home() {
         if (!item.hash) continue;
         try {
           const url = await QRCode.toDataURL(item.hash, {
-            margin: 1, width: 200,
-            color: { dark: '#0f172a', light: '#ffffff' }
+            margin: 1, width: 220,
+            color: { dark: '#09090b', light: '#ffffff' }
           });
           urls[item.slot] = url;
         } catch (err) { }
@@ -120,6 +103,22 @@ export default function Home() {
     if (studentMealCodes.length > 0) generateQRs();
     else setQrUrls({});
   }, [studentMealCodes]);
+
+  // Poll dashboard data when QR code is selected to catch live redemptions
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (selectedQrCode) {
+      const isRedeemed = isSlotRedeemed(selectedQrCode.slot, studentRedemptions);
+      if (!isRedeemed) {
+        interval = setInterval(() => {
+          fetchDashboardData();
+        }, 1500); // 1.5s fast polling
+      }
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [selectedQrCode, studentRedemptions, studentIdInput, currentDate]);
 
   // --- Student Auth Methods ---
   const handleCheckId = async (e: React.FormEvent) => {
@@ -250,7 +249,7 @@ export default function Home() {
       if (!verifyRes.ok || !verifyData.verified) throw new Error(verifyData.error || 'Verification failed');
 
       setHasBiometrics(true);
-      setBiometricMessage('✓ Device registered successfully!');
+      setBiometricMessage('Device registered successfully.');
       setTimeout(() => setBiometricMessage(''), 5000);
     } catch (err: any) {
       setBiometricMessage(`Error: ${err.message}`);
@@ -285,376 +284,272 @@ export default function Home() {
     setHasBiometrics(false);
   };
 
-  // --- Utility ---
-  const handleCopyCode = (text: string, index: number) => {
-    navigator.clipboard.writeText(text);
-    setCopiedIndex(index);
-    setTimeout(() => setCopiedIndex(null), 2000);
-  };
-
   const isSlotRedeemed = (slot: string, redemptionList: Redemption[]) => {
     return redemptionList.some((r) => r.mealSlot === slot);
-  };
-
-  // --- Warden Auth & Methods ---
-  const handleWardenPinSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (wardenPin === '1234') {
-      setIsWardenAuthenticated(true);
-      setWardenPinError('');
-    } else {
-      setWardenPinError('Invalid Warden PIN');
-    }
-  };
-
-  const handleWardenExit = () => {
-    setIsWardenAuthenticated(false);
-    setWardenPin('');
-  };
-
-  const handleWardenStudentLookup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!wardenSearchId || wardenSearchId.length !== 5) {
-      setWardenSearchError('Enter a valid 5-digit Student ID.');
-      return;
-    }
-    setIsWardenSearching(true);
-    setWardenSearchError('');
-    try {
-      const res = await fetch(`/api/students?id=${wardenSearchId}&date=${currentDate}`, {
-        headers: { 'x-warden-auth': '1234' }
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setWardenStudent(data.student);
-      setWardenRedemptions(data.redemptions);
-    } catch (err: any) {
-      setWardenSearchError(err.message || 'Network error.');
-    } finally {
-      setIsWardenSearching(false);
-    }
-  };
-
-  const handleDirectRedemption = async (studentId: number, slot: string) => {
-    setActionSuccessMessage('');
-    try {
-      const res = await fetch('/api/students', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-warden-auth': '1234' },
-        body: JSON.stringify({ studentId, date: currentDate, mealSlot: slot })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      const updatedRes = await fetch(`/api/students?id=${studentId}&date=${currentDate}`, { headers: { 'x-warden-auth': '1234' } });
-      const updatedData = await updatedRes.json();
-      if (updatedRes.ok) {
-        setWardenRedemptions(updatedData.redemptions);
-      }
-      setActionSuccessMessage(`Successfully checked in for slot ${slot}!`);
-      setTimeout(() => setActionSuccessMessage(''), 4000);
-    } catch (err: any) {
-      alert(err.message || 'Redemption failed.');
-    }
-  };
-
-  const handleTokenVerification = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsVerifyingToken(true);
-    setTokenVerifyError('');
-    try {
-      const res = await fetch('/api/students/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-warden-auth': '1234' },
-        body: JSON.stringify({ token: scannedToken.trim(), date: currentDate })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setTokenResult(data);
-    } catch (err: any) {
-      setTokenVerifyError(err.message || 'Verification failed.');
-    } finally {
-      setIsVerifyingToken(false);
-    }
-  };
-
-  const handleRedeemVerifiedToken = async () => {
-    if (!tokenResult || !tokenResult.valid) return;
-    try {
-      const res = await fetch('/api/students', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-warden-auth': '1234' },
-        body: JSON.stringify({ studentId: tokenResult.student.studentId, date: currentDate, mealSlot: tokenResult.mealSlot })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setActionSuccessMessage(`Student checked in for ${tokenResult.mealName}.`);
-      setTokenResult(null);
-      setScannedToken('');
-      setTimeout(() => setActionSuccessMessage(''), 4000);
-    } catch (err: any) {
-      alert(err.message || 'Network error.');
-    }
   };
 
   // --- Components ---
   const SecuritySetupBlock = () => {
     return (
-      <div className="glass-card p-5 rounded-2xl flex flex-col items-center text-center border border-primary-900/30 bg-primary-950/10 space-y-3">
+      <div className="glass-card p-6 rounded-2xl flex flex-col items-center text-center border border-zinc-800 bg-zinc-900/50 space-y-4">
         <div className="space-y-1">
-          <h4 className="text-sm font-black text-primary-100 flex items-center justify-center gap-2">🔐 Passwordless Login</h4>
-          <p className="text-xs text-primary-300/70">
-            {!isSecureEnv ? 'Passkeys and Biometrics require a secure HTTPS connection. They are disabled on HTTP local networks.' : (hasBiometrics ? 'You have registered this device. You can register again if you face issues.' : 'Register this device to sign in instantly with Biometrics next time.')}
+          <h4 className="text-base font-bold text-zinc-100 flex items-center justify-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
+            Passwordless Login
+          </h4>
+          <p className="text-sm text-zinc-400">
+            {!isSecureEnv ? 'Passkeys require a secure HTTPS connection. They are disabled on local HTTP networks.' : (hasBiometrics ? 'You have registered this device for instant login.' : 'Register this device to sign in instantly next time.')}
           </p>
         </div>
-        <button onClick={handleRegisterBiometric} disabled={isRegisteringBiometric || !isSecureEnv} className={`w-full max-w-[200px] px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${!isSecureEnv ? 'bg-slate-800/50 text-slate-500 border border-slate-800/50 cursor-not-allowed' : 'bg-primary-900/50 hover:bg-primary-600 border border-primary-700/50 text-white cursor-pointer'}`}>
-          {isRegisteringBiometric ? 'Registering...' : (hasBiometrics ? 'Re-register Device' : 'Register Passkey/Biometrics')}
+        <button onClick={handleRegisterBiometric} disabled={isRegisteringBiometric || !isSecureEnv} className={`w-full max-w-sm px-4 py-3 rounded-xl text-sm font-bold transition-all ${!isSecureEnv ? 'bg-zinc-900 text-zinc-600 border border-zinc-800 cursor-not-allowed' : 'bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-white cursor-pointer'}`}>
+          {isRegisteringBiometric ? 'Registering...' : (hasBiometrics ? 'Re-register Device' : 'Register Device')}
         </button>
-        {biometricMessage && <p className="text-[11px] text-emerald-400 font-bold bg-emerald-950/20 px-3 py-1.5 rounded-lg w-full">{biometricMessage}</p>}
+        {biometricMessage && <p className="text-sm text-zinc-100 font-medium bg-zinc-800 border border-zinc-600 px-4 py-2 rounded-lg w-full max-w-sm mt-2">{biometricMessage}</p>}
       </div>
     );
   };
 
   return (
-    <main className="min-h-screen bg-slate-950 pb-24 text-slate-100 relative">
-      <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-primary-500/5 rounded-full filter blur-[120px] -z-10 animate-pulse-slow"></div>
-      <div className="absolute top-1/3 right-1/4 w-[400px] h-[400px] bg-purple-500/5 rounded-full filter blur-[100px] -z-10 animate-float"></div>
+    <main className={`min-h-screen bg-zinc-950 pb-24 text-zinc-100 relative overflow-hidden font-sans ${authStep !== 'logged_in' ? 'flex flex-col justify-center items-center' : ''}`}>
 
-      {/* NAVBAR */}
-      <nav className="sticky top-0 z-40 w-full glass border-b border-slate-900/60">
-        <div className="max-w-md mx-auto px-4 h-16 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary-950/40 rounded-xl border border-primary-900/30 text-primary-400">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-            </div>
-            <div>
-              <h1 className="text-sm font-black tracking-tight text-white leading-none">CampusByte</h1>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="bg-slate-900/80 p-1 rounded-xl border border-slate-800 flex">
-              <button onClick={() => { setViewMode('student'); handleWardenExit(); }} className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${viewMode === 'student' ? 'bg-primary-600 text-white shadow' : 'text-slate-400'}`}>Portal</button>
-              <button onClick={() => setViewMode('warden')} className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${viewMode === 'warden' ? 'bg-primary-600 text-white shadow' : 'text-slate-400'}`}>Warden</button>
-            </div>
-          </div>
-        </div>
-      </nav>
 
       {/* --- STUDENT PORTAL --- */}
-      {viewMode === 'student' && (
-        <section className="max-w-md mx-auto px-4 mt-8">
+      <section className={`w-full px-4 ${authStep !== 'logged_in' ? 'max-w-md' : 'max-w-md md:max-w-4xl mx-auto mt-8'}`}>
 
-          {authStep === 'id' && (
-            <div className="glass-card w-full p-6 sm:p-8 rounded-3xl space-y-6 text-left animate-fade-in shadow-xl">
-              <div className="text-center pb-2">
-                <h3 className="text-2xl font-black text-white">Meal Portal</h3>
-                <p className="text-xs text-slate-400 mt-1">Enter your 5-digit Student ID to continue.</p>
-              </div>
-              <form onSubmit={handleCheckId} className="space-y-4">
-                <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={5} placeholder="Student ID" value={studentIdInput} onChange={(e) => setStudentIdInput(e.target.value.replace(/\D/g, ''))} className="w-full bg-slate-950 border border-slate-900 rounded-xl py-3.5 px-4 text-base focus:border-primary-500 font-black tracking-widest text-center text-slate-200" required />
-                {authError && <p className="text-[11px] text-rose-400 font-bold bg-rose-950/10 border border-rose-500/20 px-3 py-1.5 rounded-lg text-center">⚠️ {authError}</p>}
-                <button type="submit" disabled={isAuthenticating} className="w-full gradient-btn text-white text-sm font-bold py-3.5 rounded-xl">{isAuthenticating ? 'Checking...' : 'Continue'}</button>
-              </form>
+        {authStep === 'id' && (
+          <div className="glass-card max-w-md mx-auto w-full p-8 rounded-2xl space-y-6 text-left shadow-xl">
+            <div className="text-center pb-3 border-b border-zinc-800">
+              <h3 className="text-2xl font-bold text-zinc-100">Meal Portal.</h3>
+              <p className="text-sm text-zinc-400 mt-2">Enter Student ID.</p>
             </div>
-          )}
+            <form onSubmit={handleCheckId} className="space-y-4">
+              <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={5} placeholder="Student ID" value={studentIdInput} onChange={(e) => setStudentIdInput(e.target.value.replace(/\D/g, ''))} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-4 text-base focus:border-zinc-500 font-medium text-center text-zinc-100" required />
+              {authError && <p className="text-xs text-zinc-100 font-medium bg-red-950/40 border border-red-900 px-4 py-3 rounded-lg text-center">{authError}</p>}
+              <button type="submit" disabled={isAuthenticating} className="w-full btn-zinc font-bold text-sm py-4 rounded-xl">{isAuthenticating ? 'Checking...' : 'Continue'}</button>
+            </form>
+          </div>
+        )}
 
-          {authStep === 'setup_password' && (
-            <div className="glass-card w-full p-6 sm:p-8 rounded-3xl space-y-6 text-left animate-fade-in shadow-xl">
+        {authStep === 'setup_password' && (
+          <div className="glass-card max-w-md mx-auto w-full p-8 rounded-2xl space-y-6 text-left shadow-xl">
+            <div className="border-b border-zinc-800 pb-4">
+              <h3 className="text-xl font-bold text-zinc-100">Create Password</h3>
+              <p className="text-sm text-zinc-400 mt-2">Setup Password.</p>
+              <ul className="text-xs text-zinc-400 mt-4 space-y-1.5 font-medium bg-zinc-900 p-4 rounded-xl border border-zinc-800">
+                <li>• At least 8 characters</li>
+                <li>• Include letters & numbers</li>
+                <li>• Include 1 special character (!@#$)</li>
+              </ul>
+            </div>
+            <form onSubmit={handleSetupPassword} className="space-y-4">
+              <div className="relative">
+                <input type={showPassword ? "text" : "password"} placeholder="New Password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 pl-4 pr-12 text-base focus:border-zinc-500 text-zinc-100 font-medium" required />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-5 top-4 text-zinc-400 hover:text-zinc-200 text-xs font-bold">{showPassword ? 'Hide' : 'Show'}</button>
+              </div>
+              {authError && <p className="text-xs text-zinc-100 font-medium bg-red-950/40 border border-red-900 px-4 py-3 rounded-lg text-center">{authError}</p>}
+              <button type="submit" disabled={isAuthenticating} className="w-full btn-zinc font-bold text-sm py-4 rounded-xl">{isAuthenticating ? 'Saving...' : 'Save & Sign In'}</button>
+            </form>
+          </div>
+        )}
+
+        {authStep === 'password' && (
+          <div className="glass-card max-w-md mx-auto w-full p-8 rounded-2xl space-y-6 text-left shadow-xl">
+            <div className="flex items-center gap-4 mb-4 bg-zinc-900 p-4 rounded-xl border border-zinc-800">
+              <div className="w-12 h-12 rounded-full bg-zinc-200 flex items-center justify-center font-bold text-zinc-900 text-xl">{studentName.charAt(0)}</div>
               <div>
-                <h3 className="text-xl font-black text-white">Create Password</h3>
-                <p className="text-xs text-slate-400 mt-1">Hi {studentName}, secure your meal passes by creating a strong password.</p>
-                <ul className="text-[10px] text-slate-500 mt-3 space-y-1 font-medium bg-slate-900 p-3 rounded-xl border border-slate-800">
-                  <li>✓ At least 8 characters</li>
-                  <li>✓ Contains letters & numbers</li>
-                  <li>✓ At least 1 special character (!@#$)</li>
-                </ul>
+                <h3 className="text-base font-bold text-zinc-100">{studentName}</h3>
+                <p className="text-xs text-zinc-400">ID: {studentIdInput}</p>
               </div>
-              <form onSubmit={handleSetupPassword} className="space-y-4">
-                <div className="relative">
-                  <input type={showPassword ? "text" : "password"} placeholder="New Password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full bg-slate-950 border border-slate-900 rounded-xl py-3.5 pl-4 pr-12 text-base focus:border-primary-500 text-slate-200" required />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-3.5 text-slate-400 text-xs font-bold">{showPassword ? 'Hide' : 'Show'}</button>
-                </div>
-                {authError && <p className="text-[11px] text-rose-400 font-bold bg-rose-950/10 border border-rose-500/20 px-3 py-1.5 rounded-lg">⚠️ {authError}</p>}
-                <button type="submit" disabled={isAuthenticating} className="w-full gradient-btn text-white text-sm font-bold py-3.5 rounded-xl">{isAuthenticating ? 'Setting up...' : 'Save & Sign In'}</button>
-              </form>
             </div>
-          )}
-
-          {authStep === 'password' && (
-            <div className="glass-card w-full p-6 sm:p-8 rounded-3xl space-y-6 text-left animate-fade-in shadow-xl">
-              <div className="flex items-center gap-3 mb-2 bg-slate-900/50 p-3 rounded-2xl border border-slate-800">
-                <div className="w-10 h-10 rounded-full bg-primary-900 flex items-center justify-center font-black text-primary-300">{studentName.charAt(0)}</div>
-                <div>
-                  <h3 className="text-sm font-black text-white">{studentName}</h3>
-                  <p className="text-[10px] text-slate-500">ID: {studentIdInput}</p>
-                </div>
+            <form onSubmit={handlePasswordLogin} className="space-y-4">
+              <div className="relative">
+                <input type={showPassword ? "text" : "password"} placeholder="Password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 pl-4 pr-12 text-base focus:border-zinc-500 text-zinc-100 font-medium" required />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-5 top-4 text-zinc-400 hover:text-zinc-200 text-xs font-bold">{showPassword ? 'Hide' : 'Show'}</button>
               </div>
-              <form onSubmit={handlePasswordLogin} className="space-y-4">
-                <div className="relative">
-                  <input type={showPassword ? "text" : "password"} placeholder="Enter Password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full bg-slate-950 border border-slate-900 rounded-xl py-3.5 pl-4 pr-12 text-base focus:border-primary-500 text-slate-200" required />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-3.5 text-slate-400 text-xs font-bold">{showPassword ? 'Hide' : 'Show'}</button>
-                </div>
-                {authError && <p className="text-[11px] text-rose-400 font-bold bg-rose-950/10 border border-rose-500/20 px-3 py-1.5 rounded-lg text-center">⚠️ {authError}</p>}
-                <button type="submit" disabled={isAuthenticating} className="w-full gradient-btn text-white text-sm font-bold py-3.5 rounded-xl">{isAuthenticating ? 'Logging in...' : 'Sign In'}</button>
-              </form>
+              {authError && <p className="text-xs text-zinc-100 font-medium bg-red-950/40 border border-red-900 px-4 py-3 rounded-lg text-center">{authError}</p>}
+              <button type="submit" disabled={isAuthenticating} className="w-full btn-zinc font-bold text-sm py-4 rounded-xl">{isAuthenticating ? 'Logging in...' : 'Sign In'}</button>
+            </form>
 
-              <div className="relative py-2">
-                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-800"></div></div>
-                <div className="relative flex justify-center"><span className="bg-slate-900/60 px-2 text-[10px] text-slate-500 font-bold uppercase tracking-widest">OR</span></div>
-              </div>
-
-              <button onClick={handleBiometricLogin} disabled={isAuthenticating || !isSecureEnv} className={`w-full ${!isSecureEnv ? 'bg-slate-950 text-slate-600 cursor-not-allowed border-slate-900' : 'bg-slate-900 hover:bg-slate-800 text-white cursor-pointer border-slate-800'} border text-sm font-bold py-3.5 rounded-xl flex justify-center items-center gap-2 transition-colors`}>
-                <span className={`text-lg ${!isSecureEnv ? 'opacity-50 grayscale' : ''}`}>🤳</span> {isSecureEnv ? 'Passkey / Biometrics' : 'Biometrics Require HTTPS'}
-              </button>
-
-              <button onClick={() => setAuthStep('id')} className="w-full text-[10px] text-slate-500 hover:text-slate-300 font-bold underline mt-2 cursor-pointer text-center">Not {studentName}?</button>
+            <div className="relative py-4">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-zinc-800"></div></div>
+              <div className="relative flex justify-center"><span className="bg-zinc-900 px-4 text-xs text-zinc-500 font-bold uppercase tracking-wider">OR</span></div>
             </div>
-          )}
 
-          {authStep === 'logged_in' && activeStudent && (
-            <div className="space-y-5 animate-fade-in">
-              <div className="glass-card p-5 rounded-3xl flex justify-between items-center border-l-4 border-l-emerald-500 shadow-xl">
-                <div className="space-y-1 text-left">
-                  <h3 className="text-lg font-black text-white leading-tight">{activeStudent.name}</h3>
-                  <p className="text-[10px] text-slate-500">ID: <span className="text-slate-300 font-bold">{activeStudent.studentId}</span></p>
-                </div>
-                <button onClick={handleStudentLogout} className="px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-xl text-slate-400 hover:text-slate-200 text-[10px] font-bold">Sign Out</button>
+            <button onClick={handleBiometricLogin} disabled={isAuthenticating || !isSecureEnv} className={`w-full ${!isSecureEnv ? 'bg-zinc-950 text-zinc-600 cursor-not-allowed border-zinc-900' : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-200 cursor-pointer border-zinc-700'} border text-sm font-bold py-4 rounded-xl flex justify-center items-center gap-2 transition-colors`}>
+              {isSecureEnv ? 'Use Passkey / Biometrics' : 'HTTPS Required for Biometrics'}
+            </button>
+
+            <button onClick={() => setAuthStep('id')} className="w-full text-xs text-zinc-500 hover:text-zinc-300 font-medium mt-4 cursor-pointer text-center">Sign in as different user.</button>
+          </div>
+        )}
+
+        {authStep === 'logged_in' && activeStudent && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="bg-black p-6 rounded-2xl flex justify-between items-center border border-zinc-800/80 relative overflow-hidden">
+              {/* Star backdrop wrapper with delayed fade-in */}
+              <div className="absolute inset-0 w-full h-full pointer-events-none animate-stars-fade select-none">
+                {/* Rich Star field */}
+                <svg className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg">
+                  {/* Tiny background stars */}
+                  <circle cx="5%" cy="30%" r="0.8" className="fill-white/30" />
+                  <circle cx="12%" cy="70%" r="1" className="fill-white/40 animate-[pulse_3s_infinite_0.5s]" />
+                  <circle cx="22%" cy="15%" r="0.8" className="fill-white/30" />
+                  <circle cx="28%" cy="85%" r="1.2" className="fill-white/60 animate-[pulse_2.5s_infinite]" />
+                  <circle cx="38%" cy="25%" r="1" className="fill-white/40 animate-[pulse_3s_infinite_1.2s]" />
+                  <circle cx="45%" cy="60%" r="0.8" className="fill-white/30" />
+                  <circle cx="50%" cy="15%" r="1.2" className="fill-white/80 animate-[pulse_2s_infinite]" />
+                  <circle cx="58%" cy="75%" r="1" className="fill-white/50 animate-[pulse_4s_infinite_0.5s]" />
+                  <circle cx="64%" cy="35%" r="1.5" className="fill-white/60 animate-[pulse_2.5s_infinite_1s]" />
+                  <circle cx="70%" cy="85%" r="0.8" className="fill-white/40" />
+                  <circle cx="76%" cy="20%" r="1.2" className="fill-white/90 animate-[pulse_3.5s_infinite_1.2s]" />
+                  <circle cx="82%" cy="60%" r="1" className="fill-white/60 animate-[pulse_2s_infinite_0.8s]" />
+                  <circle cx="88%" cy="80%" r="1.5" className="fill-white/70 animate-[pulse_3s_infinite_1.5s]" />
+                  <circle cx="92%" cy="25%" r="0.8" className="fill-white/40" />
+                  <circle cx="96%" cy="65%" r="1.2" className="fill-white/80 animate-[pulse_4s_infinite_2s]" />
+                  <circle cx="98%" cy="15%" r="1.5" className="fill-white/90 animate-[pulse_2.5s_infinite_0.3s]" />
+
+                  {/* Shining 4-point star flares */}
+                  <svg x="40%" y="30%" className="overflow-visible animate-[pulse_2.5s_infinite_0.8s]">
+                    <path d="M0 -3 L0.7 -0.7 L3 0 L0.7 0.7 L0 3 L-0.7 0.7 L-3 0 L-0.7 -0.7 Z" fill="#ffffff" />
+                  </svg>
+                  <svg x="62%" y="20%" className="overflow-visible animate-[pulse_2s_infinite_0.5s]">
+                    <path d="M0 -3.5 L0.8 -0.8 L3.5 0 L0.8 0.8 L0 3.5 L-0.8 0.8 L-3.5 0 L-0.8 -0.8 Z" fill="#ffffff" />
+                  </svg>
+                  <svg x="78%" y="70%" className="overflow-visible animate-[pulse_3s_infinite_1.5s]">
+                    <path d="M0 -4 L1 -1 L4 0 L1 1 L0 4 L-1 1 L-4 0 L-1 -1 Z" fill="#ffffff" />
+                  </svg>
+                  <svg x="90%" y="35%" className="overflow-visible animate-[pulse_2.5s_infinite_1s]">
+                    <path d="M0 -3.5 L0.8 -0.8 L3.5 0 L0.8 0.8 L0 3.5 L-0.8 0.8 L-3.5 0 L-0.8 -0.8 Z" fill="#ffffff" />
+                  </svg>
+                </svg>
+
+                {/* Gradient overlay to smoothly hide stars behind the name/ID text */}
+                <div className="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-transparent w-[50%] z-0"></div>
+
+                {/* Shooting Stars */}
+                <div className="absolute top-0 right-[15%] w-[120px] h-[1px] bg-gradient-to-r from-white to-transparent origin-left animate-shoot-1 z-0"></div>
+                <div className="absolute top-1 right-[35%] w-[90px] h-[1px] bg-gradient-to-r from-white/70 to-transparent origin-left animate-shoot-2 z-0"></div>
               </div>
 
-              {!hasBiometrics && <SecuritySetupBlock />}
+              <div className="space-y-1 text-left relative z-10">
+                <h3 className="text-lg font-bold text-zinc-100 leading-tight">{activeStudent.name}</h3>
+                <p className="text-sm text-zinc-400">ID: <span className="text-zinc-200 font-medium">{activeStudent.studentId}</span></p>
+              </div>
+              <button onClick={handleStudentLogout} className="px-4 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-300 hover:text-white text-xs font-bold transition-colors relative z-10 cursor-pointer">Sign Out</button>
+            </div>
 
-              {activeStudent.paidStatus !== 1 ? (
-                <div className="bg-rose-950/20 border border-rose-500/25 p-6 rounded-3xl text-center space-y-4 shadow-xl">
-                  <h4 className="text-sm font-black text-rose-400">Access Suspended</h4>
-                  <p className="text-xs text-slate-400">Mess fee pending. Please clear your dues.</p>
+            {!hasBiometrics && <SecuritySetupBlock />}
+
+            {activeStudent.paidStatus !== 1 ? (
+              <div className="bg-zinc-900 border border-zinc-700 p-8 rounded-2xl text-center space-y-4 shadow-xl max-w-lg mx-auto">
+                <h4 className="text-base font-bold text-zinc-100">Access Suspended</h4>
+                <p className="text-sm text-zinc-400">Mess fee pending. Clear dues to access passes.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="text-left border-b border-zinc-800 pb-3 flex justify-between items-end">
+                  <h3 className="text-lg font-bold text-zinc-100">Daily Passes</h3>
+                  <span className="text-sm text-zinc-400 font-medium">{currentDate}</span>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="text-left border-b border-slate-900 pb-2 flex justify-between items-end">
-                    <h3 className="text-base font-black text-white">Daily Passes</h3>
-                    <span className="text-[10px] text-primary-400 font-bold">{currentDate}</span>
-                  </div>
 
-                  <div className="grid gap-4 grid-cols-1">
-                    {studentMealCodes.map((item, index) => {
-                      const redeemed = isSlotRedeemed(item.slot, studentRedemptions);
-                      const qrUrl = qrUrls[item.slot] || '';
-                      return (
-                        <div key={item.slot} className={`glass-card p-4 rounded-2xl flex items-center justify-between relative shadow-lg ${redeemed ? 'opacity-50' : 'border border-primary-900/30'}`}>
-                          <div className="space-y-1.5 flex-1 pr-4">
-                            <span className="text-xs text-slate-300 font-black uppercase tracking-wider">{item.name}</span>
-                            <div className={`inline-block text-[9px] px-2 py-0.5 rounded font-black uppercase ${redeemed ? 'bg-slate-900 text-slate-500' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                {/* DESKTOP RESPONSIVE GRID */}
+                <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
+                  {studentMealCodes.map((item) => {
+                    const redeemed = isSlotRedeemed(item.slot, studentRedemptions);
+                    const qrUrl = qrUrls[item.slot] || '';
+
+                    return (
+                      <div
+                        key={item.slot}
+                        className={`glass-card p-6 rounded-2xl flex flex-row md:flex-col items-center md:items-start justify-between md:justify-center gap-4 relative shadow-lg border ${redeemed
+                          ? 'opacity-60 border-zinc-800 bg-zinc-950'
+                          : 'border-zinc-700'
+                          }`}
+                      >
+                        <div className="space-y-3 flex-1 text-left">
+                          <h4 className="text-xl font-bold text-zinc-100 leading-none">
+                            {item.name}
+                          </h4>
+                          <div className="flex items-center gap-3">
+                            <span className={`inline-block text-xs px-3 py-1 rounded-md font-bold uppercase tracking-wider ${redeemed
+                              ? 'bg-zinc-900 text-zinc-500'
+                              : 'bg-emerald-950/40 text-emerald-400 border border-emerald-900'
+                              }`}>
                               {redeemed ? 'Redeemed' : 'Active'}
-                            </div>
-                            <div className="pt-2">
-                              <p className="text-[9px] font-black text-primary-400 font-mono truncate">{item.hash ? item.hash.substring(0, 16) + '...' : 'Generating...'}</p>
-                            </div>
-                          </div>
-
-                          <div className="flex-shrink-0">
-                            {qrUrl && (
-                              <button disabled={redeemed} onClick={() => setSelectedQrCode({ name: item.name, hash: item.hash, url: qrUrl })} className={`p-1.5 bg-white rounded-xl shadow-md ${!redeemed && 'cursor-pointer hover:scale-105 transition-transform'}`}>
-                                <img src={qrUrl} className="w-16 h-16 pointer-events-none" />
-                              </button>
+                            </span>
+                            {!redeemed && (
+                              <span className="text-xs text-zinc-500 font-medium md:hidden">
+                                Tap QR →
+                              </span>
                             )}
                           </div>
                         </div>
-                      );
-                    })}
+
+                        <div className="flex-shrink-0 md:w-full md:flex md:justify-center md:mt-2">
+                          {qrUrl && (
+                            <button
+                              disabled={redeemed}
+                              onClick={() => setSelectedQrCode({ name: item.name, hash: item.hash, url: qrUrl, slot: item.slot })}
+                              className={`p-2 bg-zinc-100 rounded-xl shadow-md ${!redeemed && 'cursor-pointer hover:scale-105 transition-transform'
+                                }`}
+                            >
+                              <img src={qrUrl} className="w-20 h-20 md:w-full md:h-auto md:max-w-[160px] pointer-events-none" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {hasBiometrics && <div className="pt-8"><SecuritySetupBlock /></div>}
+          </div>
+        )}
+
+        {/* QR Modal */}
+        {selectedQrCode && (() => {
+          const isRedeemed = isSlotRedeemed(selectedQrCode.slot, studentRedemptions);
+          return (
+            <div className="fixed inset-0 z-50 bg-zinc-950/90 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="glass-card max-w-sm w-full p-8 rounded-3xl text-center space-y-6 relative border border-zinc-800 shadow-2xl overflow-hidden">
+                {isRedeemed ? (
+                  <div className="py-8 space-y-4 animate-fade-in">
+                    <div className="w-20 h-20 bg-zinc-900 border border-zinc-700 text-zinc-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-10 h-10">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                      </svg>
+                    </div>
+                    <h4 className="text-2xl font-bold text-zinc-100">Pass Redeemed.</h4>
+                    <p className="text-sm text-zinc-400">Pass verified.</p>
+                    <button onClick={() => setSelectedQrCode(null)} className="w-full mt-6 bg-zinc-100 hover:bg-white text-zinc-950 text-sm font-bold py-4 rounded-xl transition-colors cursor-pointer">Back to Dashboard</button>
                   </div>
-                </div>
-              )}
-
-              {hasBiometrics && <div className="pt-6"><SecuritySetupBlock /></div>}
-            </div>
-          )}
-
-          {/* QR Modal */}
-          {selectedQrCode && (
-            <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-              <div className="glass-card max-w-[320px] w-full p-6 rounded-3xl text-center space-y-5 relative border border-primary-500/30 shadow-2xl">
-                <button onClick={() => setSelectedQrCode(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 bg-slate-900 rounded-full w-7 h-7 flex items-center justify-center cursor-pointer">✕</button>
-                <div className="space-y-1"><h4 className="text-lg font-black text-white">{selectedQrCode.name} Pass</h4></div>
-                <div className="flex justify-center bg-white p-3 rounded-2xl shadow-inner"><img src={selectedQrCode.url} className="w-48 h-48 pointer-events-none" /></div>
-                <div className="bg-slate-900 p-3 rounded-xl border border-slate-800">
-                  <p className="text-[10px] text-slate-500 uppercase font-black mb-1">Pass Code</p>
-                  <p className="text-[11px] font-mono text-primary-400 break-all leading-tight">{selectedQrCode.hash}</p>
-                </div>
-                <button onClick={() => setSelectedQrCode(null)} className="w-full bg-slate-900 text-slate-300 text-xs font-bold py-3.5 rounded-xl cursor-pointer">Close Window</button>
-              </div>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* --- WARDEN DASHBOARD --- */}
-      {viewMode === 'warden' && (
-        <section className="max-w-md mx-auto px-4 mt-8 text-left">
-          {!isWardenAuthenticated ? (
-            <div className="glass-card w-full p-8 rounded-3xl text-center space-y-6 shadow-xl">
-              <h3 className="text-xl font-black text-white">Warden Auth</h3>
-              <form onSubmit={handleWardenPinSubmit} className="space-y-4">
-                <div className="relative">
-                  <input type={showPassword ? "text" : "password"} inputMode="numeric" pattern="[0-9]*" maxLength={4} placeholder="PIN (1234)" value={wardenPin} onChange={(e) => setWardenPin(e.target.value.replace(/\D/g, ''))} className="w-full text-center bg-slate-900 border border-slate-800 rounded-xl py-3 pl-4 pr-12 text-xl tracking-[0.5em] font-black focus:border-primary-500 text-white" />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-4 text-slate-400 text-xs font-bold">{showPassword ? 'Hide' : 'Show'}</button>
-                </div>
-                {wardenPinError && <p className="text-[11px] text-rose-400">{wardenPinError}</p>}
-                <button type="submit" className="w-full gradient-btn text-white text-sm font-bold py-3.5 rounded-xl">Authorize</button>
-              </form>
-            </div>
-          ) : (
-            <div className="space-y-5 animate-fade-in">
-              <div className="glass-card p-5 rounded-3xl flex justify-between items-center shadow-lg">
-                <h3 className="text-base font-black text-white">Warden Console</h3>
-                <button onClick={handleWardenExit} className="bg-slate-900 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-bold">Exit</button>
-              </div>
-
-              <div className="space-y-5">
-                <div className="glass-card p-5 rounded-3xl space-y-4 shadow-lg">
-                  <h4 className="text-sm font-black text-white">Scan Token</h4>
-                  <form onSubmit={handleTokenVerification} className="space-y-3">
-                    <input type="text" placeholder="Paste Pass Code" value={scannedToken} onChange={(e) => setScannedToken(e.target.value)} className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-3 text-base font-mono" />
-                    <button type="submit" className="w-full bg-primary-600 text-white py-3 rounded-xl text-sm font-bold">Verify Code</button>
-                  </form>
-                  {tokenResult && (
-                    <div className="mt-4 p-4 rounded-2xl bg-slate-900/50 border border-slate-800 space-y-3">
-                      <p className="text-xs text-white"><strong>Student:</strong> {tokenResult.student.name} ({tokenResult.student.studentId})</p>
-                      <p className="text-xs text-white"><strong>Slot:</strong> {tokenResult.mealName}</p>
-                      {tokenResult.valid && !tokenResult.redeemed ? (
-                        <button onClick={handleRedeemVerifiedToken} className="w-full bg-emerald-600 text-white text-xs font-black py-3 rounded-xl shadow-lg shadow-emerald-900/20">Approve Meal</button>
-                      ) : (
-                        <p className="text-xs text-rose-400 font-bold bg-rose-950/30 p-2 rounded-lg text-center">Already Redeemed or Invalid</p>
-                      )}
+                ) : (
+                  <div className="animate-fade-in space-y-6">
+                    <div>
+                      <h4 className="text-xl font-bold text-zinc-100">{selectedQrCode.name} Pass</h4>
+                      <p className="text-sm text-zinc-400 mt-1">Show to scanner.</p>
                     </div>
-                  )}
-                </div>
-
-                <div className="glass-card p-5 rounded-3xl space-y-4 shadow-lg">
-                  <h4 className="text-sm font-black text-white">Manual Check-In</h4>
-                  <form onSubmit={handleWardenStudentLookup} className="flex gap-2">
-                    <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={5} placeholder="Student ID" value={wardenSearchId} onChange={(e) => setWardenSearchId(e.target.value.replace(/\D/g, ''))} className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-3 text-base font-black tracking-widest text-center" />
-                    <button type="submit" className="bg-primary-600 text-white px-5 rounded-xl text-sm font-bold">Search</button>
-                  </form>
-                  {wardenStudent && (
-                    <div className="mt-4 space-y-3 bg-slate-900/40 p-4 rounded-2xl border border-slate-800">
-                      <p className="text-sm font-black text-white">{wardenStudent.name}</p>
-                      {['01', '02', '03'].map(slot => {
-                        const redeemed = isSlotRedeemed(slot, wardenRedemptions);
-                        return (
-                          <div key={slot} className="flex justify-between items-center p-2.5 bg-slate-950/60 border border-slate-900 rounded-xl">
-                            <span className="text-xs font-bold text-slate-300">{slot === '01' ? 'Breakfast' : slot === '02' ? 'Lunch' : 'Dinner'}</span>
-                            {redeemed ? <span className="text-[10px] text-slate-500 font-black uppercase">Redeemed</span> : <button onClick={() => handleDirectRedemption(wardenStudent.studentId, slot)} className="text-[10px] bg-primary-900/80 hover:bg-primary-600 text-white px-4 py-1.5 rounded-lg font-bold transition-colors">Check In</button>}
-                          </div>
-                        );
-                      })}
+                    <div className="flex justify-center bg-zinc-100 p-4 rounded-2xl shadow-inner mx-auto max-w-[240px]">
+                      <img src={selectedQrCode.url} className="w-full h-auto pointer-events-none" />
                     </div>
-                  )}
-                </div>
+                    <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800">
+                      <p className="text-xs text-zinc-500 font-bold mb-2">Hash Code</p>
+                      <p className="text-xs font-mono text-zinc-400 break-all">{selectedQrCode.hash}</p>
+                    </div>
+                    <button onClick={() => setSelectedQrCode(null)} className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-sm font-bold py-4 rounded-xl transition-colors cursor-pointer">Close Window</button>
+                  </div>
+                )}
               </div>
             </div>
-          )}
-        </section>
-      )}
+          );
+        })()}
+      </section>
+
+      <footer className="absolute bottom-6 w-full text-center">
+        <p className="text-lg font-normal font-pixel text-white">CampusByte.</p>
+      </footer>
     </main>
   );
 }

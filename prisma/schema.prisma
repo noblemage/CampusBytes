@@ -1,5 +1,5 @@
 datasource db {
-  provider = "sqlite"
+  provider  = "postgresql"
 }
 
 generator client {
@@ -34,6 +34,16 @@ model MealRedemption {
   mealSlot   String   // '01' (Breakfast), '02' (Lunch), '03' (Dinner)
   redeemedAt DateTime @default(now())
   student    Student  @relation(fields: [studentId], references: [studentId], onDelete: Cascade)
+  wardenId   Int?
+  warden     Warden?  @relation(fields: [wardenId], references: [id], onDelete: SetNull)
 
   @@unique([studentId, date, mealSlot])
+}
+
+model Warden {
+  id           Int              @id @default(autoincrement())
+  username     String           @unique
+  name         String
+  passwordHash String
+  redemptions  MealRedemption[]
 }

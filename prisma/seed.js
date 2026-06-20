@@ -1,9 +1,11 @@
+const bcrypt = require('bcryptjs');
 require('dotenv').config();
-const { PrismaBetterSqlite3 } = require('@prisma/adapter-better-sqlite3');
 const { PrismaClient } = require('@prisma/client'); 
+const { Pool } = require('pg');
+const { PrismaPg } = require('@prisma/adapter-pg');
 
-const dbUrl = process.env.DATABASE_URL || "file:./dev.db";
-const adapter = new PrismaBetterSqlite3({ url: dbUrl });
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 const students = [
@@ -20,9 +22,10 @@ const students = [
 ];
 
 async function main() {
-  console.log("Clearing existing student and redemption records...");
+  console.log("Clearing existing warden, student and redemption records...");
   await prisma.mealRedemption.deleteMany({});
   await prisma.student.deleteMany({});
+  await prisma.warden.deleteMany({});
   
   console.log("Seeding student records into SQLite...");
   for (const student of students) {
@@ -31,7 +34,22 @@ async function main() {
     });
   }
   
-  console.log(`Successfully seeded ${students.length} hostler students.`);
+  console.log("Seeding warden records...");
+  const salt = await bcrypt.genSalt(10);
+  const passwordHash = await bcrypt.hash("WardenPass123!", salt);
+  
+  const wardens = [
+    { username: "warden1", name: "Warden Primary", passwordHash },
+    { username: "warden2", name: "Warden Secondary", passwordHash }
+  ];
+  
+  for (const warden of wardens) {
+    await prisma.warden.create({
+      data: warden
+    });
+  }
+  
+  console.log(`Successfully seeded ${students.length} hostler students and ${wardens.length} wardens.`);
 }
 
 main()
