@@ -268,7 +268,7 @@ export default function Home() {
         {authStep === 'id' && (
           <div className="glass-card max-w-md mx-auto w-full p-8 rounded-2xl space-y-6 text-left shadow-xl">
             <div className="text-center pb-3 border-b border-zinc-800">
-              <h3 className="text-2xl font-bold text-zinc-100">Meal Portal.</h3>
+              <h3 className="text-2xl font-bold text-zinc-100">Meal Portal</h3>
               <p className="text-sm text-zinc-400 mt-2">Enter Student ID.</p>
             </div>
             <form onSubmit={handleCheckId} className="space-y-4">
