@@ -100,7 +100,7 @@ export default function WardenLoginPage() {
       </div>
 
       <footer className="absolute bottom-6 w-full text-center">
-        <p className="text-lg font-normal font-pixel text-zinc-600">CampysBytes.</p>
+        <p className="text-lg font-normal font-pixel text-zinc-600">CampusBytes.</p>
       </footer>
     </main>
   );

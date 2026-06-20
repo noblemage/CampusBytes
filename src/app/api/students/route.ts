@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { getSession, getWardenSession } from '@/lib/auth';
 import { checkRateLimit, getIp } from '@/lib/rate-limit';
+
+function generateHMAC(data: string): string {
+  const secret = process.env.QR_SECRET;
+  if (!secret) throw new Error('QR_SECRET environment variable is required');
+  return crypto.createHmac('sha256', secret).update(data).digest('hex');
+}
 
 // GET /api/students?id=XXXXX&date=YYYY-MM-DD
 export async function GET(request: Request) {
@@ -63,7 +70,24 @@ export async function GET(request: Request) {
       }
     });
 
-    return NextResponse.json({ student, redemptions, date: targetDate, hasBiometrics });
+    // Generate secure HMAC QR codes on the server so the secret never touches the client
+    const slots = [
+      { slot: '01', name: 'Breakfast' },
+      { slot: '02', name: 'Lunch' },
+      { slot: '03', name: 'Dinner' }
+    ];
+    
+    let mealCodes: { slot: string; name: string; raw: string; hash: string }[] = [];
+    
+    if (student && student.paidStatus === 1) {
+      mealCodes = slots.map((item) => {
+        const raw = `${student.studentId}-${targetDate}-${item.slot}`;
+        const hash = generateHMAC(raw);
+        return { slot: item.slot, name: item.name, raw, hash };
+      });
+    }
+
+    return NextResponse.json({ student, redemptions, date: targetDate, hasBiometrics, mealCodes });
   } catch (error) {
     console.error("Error retrieving student details:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

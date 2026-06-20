@@ -3,11 +3,11 @@ import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { getWardenSession } from '@/lib/auth';
 
-const SECRET_KEY = 'Janet123';
-
 // Helper to generate HMAC-SHA256 hash
 function generateHMAC(data: string): string {
-  return crypto.createHmac('sha256', SECRET_KEY).update(data).digest('hex');
+  const secret = process.env.QR_SECRET;
+  if (!secret) throw new Error('QR_SECRET environment variable is required');
+  return crypto.createHmac('sha256', secret).update(data).digest('hex');
 }
 
 // POST /api/students/verify

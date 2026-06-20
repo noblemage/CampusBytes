@@ -3,8 +3,6 @@
 import { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import { startRegistration, startAuthentication } from '@simplewebauthn/browser';
-import hmacSHA256 from 'crypto-js/hmac-sha256';
-import Hex from 'crypto-js/enc-hex';
 
 interface Student {
   studentId: number;
@@ -18,19 +16,6 @@ interface Redemption {
   date: string;
   mealSlot: string;
   redeemedAt: string;
-}
-
-const SECRET_KEY = 'Janet123';
-
-// Fallback HMAC generation using crypto-js so it works on HTTP LAN (mobile dev testing)
-function generateClientHMAC(message: string, secret: string): string {
-  try {
-    const hash = hmacSHA256(message, secret);
-    return hash.toString(Hex);
-  } catch (err) {
-    console.error("HMAC generation failed:", err);
-    return '';
-  }
 }
 
 export default function Home() {
@@ -63,27 +48,7 @@ export default function Home() {
     if (savedId) setStudentIdInput(savedId);
   }, []);
 
-  // Compute codes
-  useEffect(() => {
-    function computeCodes() {
-      if (!activeStudent || activeStudent.paidStatus !== 1 || !currentDate) {
-        setStudentMealCodes([]);
-        return;
-      }
-      const slots = [
-        { slot: '01', name: 'Breakfast' },
-        { slot: '02', name: 'Lunch' },
-        { slot: '03', name: 'Dinner' }
-      ];
-      const computed = slots.map((item) => {
-        const raw = `${activeStudent.studentId}-${currentDate}-${item.slot}`;
-        const hash = generateClientHMAC(raw, SECRET_KEY);
-        return { slot: item.slot, name: item.name, raw, hash };
-      });
-      setStudentMealCodes(computed);
-    }
-    computeCodes();
-  }, [activeStudent, currentDate]);
+  // Compute codes removed - now handled by the server API
 
   // Generate QR codes
   useEffect(() => {
@@ -269,6 +234,7 @@ export default function Home() {
       setActiveStudent(data.student);
       setStudentRedemptions(data.redemptions);
       setHasBiometrics(!!data.hasBiometrics);
+      setStudentMealCodes(data.mealCodes || []);
       setAuthStep('logged_in');
     } catch (err) {
       setAuthError('Could not load dashboard data.');
@@ -562,7 +528,7 @@ export default function Home() {
       </section>
 
       <footer className="absolute bottom-6 w-full text-center">
-        <p className="text-lg font-normal font-pixel text-zinc-600">CampysBytes.</p>
+        <p className="text-lg font-normal font-pixel text-zinc-600">CampusBytes.</p>
       </footer>
     </main>
   );

@@ -47,3 +47,9 @@ model Warden {
   passwordHash String
   redemptions  MealRedemption[]
 }
+
+model RateLimit {
+  key     String @id
+  count   Int
+  resetAt Float
+}
