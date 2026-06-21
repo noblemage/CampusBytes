@@ -107,6 +107,18 @@ export default function Home() {
     };
   }, [selectedQrCode, studentRedemptions, studentIdInput, currentDate, fetchDashboardData]);
 
+  // Close QR modal on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedQrCode) {
+        setSelectedQrCode(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedQrCode]);
+
   // --- Student Auth Methods ---
   const handleCheckId = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -505,8 +517,14 @@ export default function Home() {
         {selectedQrCode && (() => {
           const isRedeemed = isSlotRedeemed(selectedQrCode.slot, studentRedemptions);
           return (
-            <div className="fixed inset-0 z-50 bg-zinc-950/90 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="glass-card max-w-sm w-full p-8 rounded-3xl text-center space-y-6 relative border border-zinc-800 shadow-2xl overflow-hidden">
+            <div 
+              className="fixed inset-0 z-50 bg-zinc-950/90 backdrop-blur-sm flex items-center justify-center p-4"
+              onClick={() => setSelectedQrCode(null)}
+            >
+              <div 
+                className="glass-card max-w-sm w-full p-8 rounded-3xl text-center space-y-6 relative border border-zinc-800 shadow-2xl overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
                 {isRedeemed ? (
                   <div className="py-8 space-y-4 animate-fade-in">
                     <div className="w-20 h-20 bg-zinc-900 border border-zinc-700 text-zinc-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl">
