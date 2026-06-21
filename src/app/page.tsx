@@ -49,7 +49,7 @@ export default function Home() {
     }, 0);
   }, []);
 
-  // Compute codes removed - now handled by the server API
+
 
   // Generate QR codes
   useEffect(() => {
@@ -272,7 +272,7 @@ export default function Home() {
   // --- Components ---
 
   return (
-    <main className={`min-h-screen bg-zinc-950 pb-24 text-zinc-100 relative overflow-hidden font-sans ${authStep !== 'logged_in' ? 'flex flex-col justify-center items-center' : ''}`}>
+    <main className={`min-h-screen pb-24 text-zinc-100 relative overflow-hidden font-sans ${authStep !== 'logged_in' ? 'flex flex-col justify-center items-center' : ''}`}>
 
       {/* --- STUDENT PORTAL --- */}
       <section className={`w-full px-4 ${authStep !== 'logged_in' ? 'max-w-md animate-float' : 'max-w-md md:max-w-4xl mx-auto mt-8'}`}>
@@ -447,31 +447,31 @@ export default function Home() {
                     return (
                       <div
                         key={item.slot}
-                        className={`glass-card p-6 rounded-2xl flex flex-row md:flex-col items-center md:items-start justify-between md:justify-center gap-4 relative shadow-lg border ${redeemed
+                        className={`glass-card p-6 pt-8 rounded-2xl flex flex-col items-center md:items-start gap-4 relative shadow-lg border ${redeemed
                           ? 'opacity-60 border-zinc-800 bg-zinc-950'
                           : 'border-zinc-700'
                           }`}
                       >
-                        <div className="space-y-3 flex-1 text-left">
-                          <h4 className="text-xl font-bold text-zinc-100 leading-none">
-                            {item.name}
-                          </h4>
-                          <div className="flex items-center gap-3">
-                            <span className={`inline-block text-xs px-3 py-1 rounded-md font-bold uppercase tracking-wider ${redeemed
-                              ? 'bg-zinc-900 text-zinc-500'
+                        <div className="w-full text-left space-y-1.5">
+                          <div className="flex justify-between items-center w-full">
+                            <h4 className="text-xl font-bold text-zinc-100 leading-none">
+                              {item.name}
+                            </h4>
+                            <span className={`text-xs px-2.5 py-0.5 rounded-md font-bold uppercase tracking-wider ${redeemed
+                              ? 'bg-zinc-900 text-zinc-500 border border-zinc-800'
                               : 'bg-emerald-950/40 text-emerald-400 border border-emerald-900'
                               }`}>
                               {redeemed ? 'Redeemed' : 'Active'}
                             </span>
-                            {!redeemed && (
-                              <span className="text-xs text-zinc-500 font-medium md:hidden">
-                                Tap QR →
-                              </span>
-                            )}
                           </div>
+                          {!redeemed && (
+                            <span className="text-xs text-zinc-500 font-medium block">
+                              Tap QR to zoom
+                            </span>
+                          )}
                         </div>
 
-                        <div className="flex-shrink-0 md:w-full md:flex md:justify-center md:mt-2">
+                        <div className="w-full flex justify-center md:mt-2">
                           {qrUrl && (
                             <button
                               disabled={redeemed}
@@ -480,7 +480,7 @@ export default function Home() {
                                 }`}
                             >
                               {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={qrUrl} alt="QR Pass" className="w-20 h-20 md:w-full md:h-auto md:max-w-[160px] pointer-events-none" />
+                              <img src={qrUrl} alt="QR Pass" className="w-32 h-32 md:w-full md:h-auto md:max-w-[160px] pointer-events-none" />
                             </button>
                           )}
                         </div>

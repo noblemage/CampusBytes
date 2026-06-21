@@ -204,7 +204,7 @@ export default function WardenDashboard() {
 
   if (checkingAuth) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-zinc-100 font-bold text-lg">
+      <div className="min-h-screen flex items-center justify-center text-zinc-100 font-bold text-lg">
         Verifying session...
       </div>
     );
@@ -213,7 +213,7 @@ export default function WardenDashboard() {
   if (!warden) return null;
 
   return (
-    <main className="min-h-screen bg-zinc-950 pb-24 text-zinc-100 relative overflow-hidden font-sans">
+    <main className="min-h-screen pb-24 text-zinc-100 relative overflow-hidden font-sans">
       <div className="max-w-6xl mx-auto px-4 pt-6 flex justify-between items-center gap-4">
         <span className="text-sm text-zinc-400 font-medium">Active: {warden.name}</span>
         <button onClick={handleLogout} className="px-4 py-2 bg-zinc-900 border border-zinc-700 hover:bg-zinc-800 rounded-lg text-zinc-300 hover:text-white text-xs font-bold transition-colors cursor-pointer">

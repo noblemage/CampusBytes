@@ -41,7 +41,7 @@ export default function WardenLoginPage() {
   };
 
   return (
-    <main className="min-h-screen bg-zinc-950 flex flex-col justify-center items-center p-4 relative text-zinc-100 overflow-hidden font-sans">
+    <main className="min-h-screen flex flex-col justify-center items-center p-4 relative text-zinc-100 overflow-hidden font-sans">
 
       <div className="glass-card max-w-md w-full p-10 rounded-3xl space-y-8 shadow-2xl border border-zinc-800 animate-fade-in animate-float">
         <div className="text-center space-y-3 border-b border-zinc-800 pb-6">
