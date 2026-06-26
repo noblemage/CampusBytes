@@ -278,20 +278,45 @@ export default function Home() {
       <section className={`w-full px-4 ${authStep !== 'logged_in' ? 'max-w-md animate-float' : 'max-w-md md:max-w-4xl mx-auto mt-8'}`}>
 
         {authStep === 'id' && (
-          <div className="glass-card max-w-md mx-auto w-full p-8 rounded-2xl space-y-6 text-left shadow-xl">
-            <div className="text-center pb-3 border-b border-zinc-800">
-              <h3 className="text-2xl font-bold text-zinc-100">Meal Portal</h3>
-              <p className="text-sm text-zinc-400 mt-2">Enter Student ID.</p>
+          <>
+            <div className="glass-card max-w-md mx-auto w-full p-8 rounded-2xl space-y-6 text-left shadow-xl">
+              <div className="text-center pb-3 border-b border-zinc-800">
+                <h3 className="text-2xl font-bold text-zinc-100">Meal Portal</h3>
+                <p className="text-sm text-zinc-400 mt-2">Enter Student ID.</p>
+              </div>
+              <form onSubmit={handleCheckId} className="space-y-4">
+                <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={5} placeholder="Student ID" value={studentIdInput} onChange={(e) => setStudentIdInput(e.target.value.replace(/\D/g, ''))} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-4 text-base focus:border-zinc-500 font-medium text-center text-zinc-100" required />
+                <button type="submit" disabled={isAuthenticating} className="w-full btn-zinc font-bold text-sm py-4 rounded-xl">{isAuthenticating ? 'Checking...' : 'Continue'}</button>
+              </form>
             </div>
-            <form onSubmit={handleCheckId} className="space-y-4">
-              <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={5} placeholder="Student ID" value={studentIdInput} onChange={(e) => setStudentIdInput(e.target.value.replace(/\D/g, ''))} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-4 text-base focus:border-zinc-500 font-medium text-center text-zinc-100" required />
-              <button type="submit" disabled={isAuthenticating} className="w-full btn-zinc font-bold text-sm py-4 rounded-xl">{isAuthenticating ? 'Checking...' : 'Continue'}</button>
-            </form>
-          </div>
+            
+            {/* Demo Helper */}
+            {process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true' && (
+              <div className="glass-card max-w-md mx-auto w-full mt-4 p-6 rounded-2xl space-y-4 text-center shadow-xl border border-zinc-800">
+                <div className="space-y-2">
+                  <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Demo Accounts</p>
+                  <div className="flex flex-col gap-2 justify-center">
+                    <div className="flex gap-2 w-full">
+                      <button type="button" onClick={() => setStudentIdInput('10001')} className="text-xs bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 px-4 py-2 rounded-lg transition-colors cursor-pointer font-medium w-full">Paid (10001)</button>
+                      <button type="button" onClick={() => setStudentIdInput('10002')} className="text-xs bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 px-4 py-2 rounded-lg transition-colors cursor-pointer font-medium w-full">Unpaid (10002)</button>
+                    </div>
+                    <button type="button" onClick={() => setStudentIdInput('10003')} className="text-xs bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 px-4 py-2 rounded-lg transition-colors cursor-pointer font-medium w-full">Unregistered (10003)</button>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-zinc-800/50">
+                  <a href="/warden/login" className="text-xs text-zinc-400 hover:text-zinc-200 font-medium transition-colors inline-flex items-center gap-1">
+                    Try Warden Dashboard Demo 
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3 h-3"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" /></svg>
+                  </a>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {authStep === 'setup_password' && (
-          <div className="glass-card max-w-md mx-auto w-full p-8 rounded-2xl space-y-6 text-left shadow-xl">
+          <>
+            <div className="glass-card max-w-md mx-auto w-full p-8 rounded-2xl space-y-6 text-left shadow-xl">
             <div className="border-b border-zinc-800 pb-4">
               <h3 className="text-xl font-bold text-zinc-100">Create Password</h3>
               <p className="text-sm text-zinc-400 mt-2">Setup Password.</p>
@@ -315,42 +340,61 @@ export default function Home() {
               <button type="submit" disabled={isAuthenticating} className="w-full btn-zinc font-bold text-sm py-4 rounded-xl">{isAuthenticating ? 'Saving...' : 'Save & Sign In'}</button>
             </form>
           </div>
+
+          {/* Demo Helper */}
+          {process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true' && (
+            <div className="glass-card max-w-md mx-auto w-full mt-4 p-6 rounded-2xl space-y-2 text-center shadow-xl border border-zinc-800">
+              <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Demo Password</p>
+              <button type="button" onClick={() => setPasswordInput('password123')} className="text-xs bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 px-4 py-2 rounded-lg transition-colors cursor-pointer w-full font-medium">Quick Fill (password123)</button>
+            </div>
+          )}
+        </>
         )}
 
         {authStep === 'password' && (
-          <div className="glass-card max-w-md mx-auto w-full p-8 rounded-2xl space-y-6 text-left shadow-xl">
-            <div className="flex items-center gap-4 mb-4 bg-zinc-900 p-4 rounded-xl border border-zinc-800">
-              <div className="w-12 h-12 rounded-full bg-zinc-200 flex items-center justify-center font-bold text-zinc-900 text-xl">{studentName.charAt(0)}</div>
-              <div>
-                <h3 className="text-base font-bold text-zinc-100">{studentName}</h3>
-                <p className="text-xs text-zinc-400">ID: {studentIdInput}</p>
+          <>
+            <div className="glass-card max-w-md mx-auto w-full p-8 rounded-2xl space-y-6 text-left shadow-xl">
+              <div className="flex items-center gap-4 mb-4 bg-zinc-900 p-4 rounded-xl border border-zinc-800">
+                <div className="w-12 h-12 rounded-full bg-zinc-200 flex items-center justify-center font-bold text-zinc-900 text-xl">{studentName.charAt(0)}</div>
+                <div>
+                  <h3 className="text-base font-bold text-zinc-100">{studentName}</h3>
+                  <p className="text-xs text-zinc-400">ID: {studentIdInput}</p>
+                </div>
               </div>
-            </div>
-            <form onSubmit={handlePasswordLogin} className="space-y-4">
-              <div className="relative">
-                <input type={showPassword ? "text" : "password"} placeholder="Password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 pl-4 pr-12 text-base focus:border-zinc-500 text-zinc-100 font-medium" required />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-[1.1rem] text-zinc-400 hover:text-zinc-200 cursor-pointer">
-                  {showPassword ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z" /><path fillRule="evenodd" d="M1.323 11.447C2.811 6.976 7.028 3.75 12.001 3.75c4.97 0 9.185 3.223 10.675 7.69.12.362.12.752 0 1.113-1.487 4.471-5.705 7.697-10.677 7.697-4.97 0-9.186-3.223-10.675-7.69a1.762 1.762 0 010-1.113zM17.25 12a5.25 5.25 0 11-10.5 0 5.25 5.25 0 0110.5 0z" clipRule="evenodd" /></svg>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M3.53 2.47a.75.75 0 00-1.06 1.06l18 18a.75.75 0 101.06-1.06l-18-18zM22.676 12.553a11.249 11.249 0 01-2.631 4.31l-3.099-3.099a5.25 5.25 0 00-6.71-6.71L7.759 4.577a11.217 11.217 0 014.242-.827c4.97 0 9.185 3.223 10.675 7.69.12.362.12.752 0 1.113z" /><path d="M15.75 12c0 .18-.013.357-.037.53l-4.244-4.243A3.75 3.75 0 0115.75 12zM12.53 15.713l-4.243-4.244a3.75 3.75 0 004.243 4.243z" /><path d="M6.75 12c0-.619.107-1.213.304-1.764l-3.1-3.1a11.25 11.25 0 00-2.63 4.31c-.12.362-.12.752 0 1.114 1.489 4.467 5.704 7.69 10.675 7.69 1.5 0 2.933-.294 4.242-.827l-2.477-2.477A5.25 5.25 0 016.75 12z" /></svg>
-                  )}
-                </button>
+              <form onSubmit={handlePasswordLogin} className="space-y-4">
+                <div className="relative">
+                  <input type={showPassword ? "text" : "password"} placeholder="Password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 pl-4 pr-12 text-base focus:border-zinc-500 text-zinc-100 font-medium" required />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-[1.1rem] text-zinc-400 hover:text-zinc-200 cursor-pointer">
+                    {showPassword ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z" /><path fillRule="evenodd" d="M1.323 11.447C2.811 6.976 7.028 3.75 12.001 3.75c4.97 0 9.185 3.223 10.675 7.69.12.362.12.752 0 1.113-1.487 4.471-5.705 7.697-10.677 7.697-4.97 0-9.186-3.223-10.675-7.69a1.762 1.762 0 010-1.113zM17.25 12a5.25 5.25 0 11-10.5 0 5.25 5.25 0 0110.5 0z" clipRule="evenodd" /></svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M3.53 2.47a.75.75 0 00-1.06 1.06l18 18a.75.75 0 101.06-1.06l-18-18zM22.676 12.553a11.249 11.249 0 01-2.631 4.31l-3.099-3.099a5.25 5.25 0 00-6.71-6.71L7.759 4.577a11.217 11.217 0 014.242-.827c4.97 0 9.185 3.223 10.675 7.69.12.362.12.752 0 1.113z" /><path d="M15.75 12c0 .18-.013.357-.037.53l-4.244-4.243A3.75 3.75 0 0115.75 12zM12.53 15.713l-4.243-4.244a3.75 3.75 0 004.243 4.243z" /><path d="M6.75 12c0-.619.107-1.213.304-1.764l-3.1-3.1a11.25 11.25 0 00-2.63 4.31c-.12.362-.12.752 0 1.114 1.489 4.467 5.704 7.69 10.675 7.69 1.5 0 2.933-.294 4.242-.827l-2.477-2.477A5.25 5.25 0 016.75 12z" /></svg>
+                    )}
+                  </button>
+                </div>
+                <button type="submit" disabled={isAuthenticating} className="w-full btn-zinc font-bold text-sm py-4 rounded-xl">{isAuthenticating ? 'Logging in...' : 'Sign In'}</button>
+              </form>
+
+              <div className="relative py-4">
+                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-zinc-800"></div></div>
+                <div className="relative flex justify-center"><span className="bg-zinc-900 px-4 text-xs text-zinc-500 font-bold uppercase tracking-wider">OR</span></div>
               </div>
-              <button type="submit" disabled={isAuthenticating} className="w-full btn-zinc font-bold text-sm py-4 rounded-xl">{isAuthenticating ? 'Logging in...' : 'Sign In'}</button>
-            </form>
 
-            <div className="relative py-4">
-              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-zinc-800"></div></div>
-              <div className="relative flex justify-center"><span className="bg-zinc-900 px-4 text-xs text-zinc-500 font-bold uppercase tracking-wider">OR</span></div>
+              <button onClick={handleBiometricLogin} disabled={isAuthenticating || !isSecureEnv} className={`w-full ${!isSecureEnv ? 'bg-zinc-950 text-zinc-600 cursor-not-allowed border-zinc-900' : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-200 cursor-pointer border-zinc-700'} border text-sm font-bold py-4 rounded-xl flex justify-center items-center gap-2 transition-colors`}>
+                {isSecureEnv ? 'Use Passkey / Biometrics' : 'HTTPS Required for Biometrics'}
+              </button>
+
+              <button onClick={() => setAuthStep('id')} className="w-full text-xs text-zinc-500 hover:text-zinc-300 font-medium mt-4 cursor-pointer text-center">Sign in as different user.</button>
             </div>
 
-            <button onClick={handleBiometricLogin} disabled={isAuthenticating || !isSecureEnv} className={`w-full ${!isSecureEnv ? 'bg-zinc-950 text-zinc-600 cursor-not-allowed border-zinc-900' : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-200 cursor-pointer border-zinc-700'} border text-sm font-bold py-4 rounded-xl flex justify-center items-center gap-2 transition-colors`}>
-              {isSecureEnv ? 'Use Passkey / Biometrics' : 'HTTPS Required for Biometrics'}
-            </button>
-
-            <button onClick={() => setAuthStep('id')} className="w-full text-xs text-zinc-500 hover:text-zinc-300 font-medium mt-4 cursor-pointer text-center">Sign in as different user.</button>
-          </div>
+            {/* Demo Helper */}
+            {process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true' && (
+              <div className="glass-card max-w-md mx-auto w-full mt-4 p-6 rounded-2xl space-y-2 text-center shadow-xl border border-zinc-800">
+                <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Demo Password</p>
+                <button type="button" onClick={() => setPasswordInput('password123')} className="text-xs bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 px-4 py-2 rounded-lg transition-colors cursor-pointer w-full font-medium">Quick Fill (password123)</button>
+              </div>
+            )}
+          </>
         )}
 
         {authStep === 'logged_in' && activeStudent && (

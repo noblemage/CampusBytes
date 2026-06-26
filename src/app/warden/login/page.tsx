@@ -93,6 +93,14 @@ export default function WardenLoginPage() {
         </form>
       </div>
 
+      {/* Demo Helper */}
+      {process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true' && (
+        <div className="glass-card max-w-md w-full mt-4 p-6 rounded-3xl space-y-2 text-center shadow-2xl border border-zinc-800 animate-fade-in animate-float" style={{ animationDelay: '0.1s' }}>
+          <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Demo Warden</p>
+          <button type="button" onClick={() => { setUsername('warden_demo'); setPassword('password123'); }} className="text-xs bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 px-4 py-2 rounded-lg transition-colors cursor-pointer w-full font-medium">Quick Fill (warden_demo)</button>
+        </div>
+      )}
+
       <footer className="absolute bottom-6 w-full text-center">
         <p className="text-lg font-normal font-pixel text-zinc-600">CampusBytes.</p>
       </footer>

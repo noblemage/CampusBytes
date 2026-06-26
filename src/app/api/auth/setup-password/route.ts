@@ -28,21 +28,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Password already set" }, { status: 400 });
     }
 
-    // Validate password strength: min 8 chars, 1 letter, 1 number, 1 special char
-    const strongPasswordRegex = /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+{}\[\]:;"'<>,.?/\\|`~-]).{8,}$/;
-    if (!strongPasswordRegex.test(password)) {
-      return NextResponse.json({ 
-        error: "Password must be at least 8 characters long, and contain at least one letter, one number, and one special character." 
-      }, { status: 400 });
+    // Bypass database update and strict validation for demo account 10003
+    const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
+    if (!isDemoMode || sId !== 10003) {
+      // Validate password strength: min 8 chars, 1 letter, 1 number, 1 special char
+      const strongPasswordRegex = /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+{}\[\]:;"'<>,.?/\\|`~-]).{8,}$/;
+      if (!strongPasswordRegex.test(password)) {
+        return NextResponse.json({ 
+          error: "Password must be at least 8 characters long, and contain at least one letter, one number, and one special character." 
+        }, { status: 400 });
+      }
+
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(password, salt);
+
+      await prisma.student.update({
+        where: { studentId: sId },
+        data: { passwordHash }
+      });
     }
-
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(password, salt);
-
-    await prisma.student.update({
-      where: { studentId: sId },
-      data: { passwordHash }
-    });
 
     await createSessionCookie(sId);
 
