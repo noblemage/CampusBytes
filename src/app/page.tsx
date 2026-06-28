@@ -40,6 +40,7 @@ export default function Home() {
   const [isRegisteringBiometric, setIsRegisteringBiometric] = useState(false);
   const [biometricMessage, setBiometricMessage] = useState('');
   const [hasBiometrics, setHasBiometrics] = useState(false);
+  const [showInfoCard, setShowInfoCard] = useState(false);
 
   useEffect(() => {
     setTimeout(() => {
@@ -47,6 +48,19 @@ export default function Home() {
       const savedId = localStorage.getItem('studentId');
       if (savedId) setStudentIdInput(savedId);
     }, 0);
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (window.location.search.includes('reset-demo=true')) {
+        localStorage.removeItem('cb-demo-card-dismissed');
+      }
+      const dismissed = localStorage.getItem('cb-demo-card-dismissed');
+      if (!dismissed) {
+        setShowInfoCard(true);
+      }
+    }, 2500);
+    return () => clearTimeout(timer);
   }, []);
 
 
@@ -602,6 +616,65 @@ export default function Home() {
           );
         })()}
       </section>
+
+      {/* Project Info Card Centered Overlay */}
+      <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/70 backdrop-blur-sm transition-all duration-300 ${
+        showInfoCard ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+      }`}>
+        <div className={`max-w-md w-full bg-zinc-900/90 border border-zinc-800 p-8 rounded-2xl shadow-2xl text-left transform transition-all duration-300 ${
+          showInfoCard ? 'translate-y-0 scale-100 animate-float' : 'translate-y-4 scale-95'
+        }`}>
+          {/* Header */}
+          <div className="flex justify-between items-start mb-5 border-b border-zinc-800 pb-3">
+            <h4 className="text-sm font-bold text-zinc-100">
+              This is a live demo
+            </h4>
+          </div>
+
+          {/* Content */}
+          <div className="space-y-4">
+            {/* Overview / Introduction */}
+            <div className="space-y-1">
+              <h5 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Overview</h5>
+              <p className="text-xs text-zinc-300 leading-relaxed">
+                This platform features two integrated systems: a <span className="text-zinc-100 font-semibold">Student Portal</span> for viewing mess menus and retrieving QR food passes, and a <span className="text-zinc-100 font-semibold">Warden Portal</span> for scanning and verifying active student QR passes to record food distribution.
+              </p>
+            </div>
+
+            {/* Demo Instructions */}
+            <div className="space-y-2.5 pt-3 border-t border-zinc-800/60">
+              <h5 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Demo Instructions</h5>
+              <ul className="space-y-2.5 text-xs text-zinc-100 leading-relaxed font-medium">
+                <li className="flex items-start gap-2">
+                  <span className="text-zinc-100 text-sm leading-none">•</span>
+                  <span>The login pages have &apos;Quick Fill&apos; buttons so you don&apos;t even have to type.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-zinc-100 text-sm leading-none">•</span>
+                  <span>Try logging in as a paid student (10001), an unpaid student (10002), or the warden (warden_demo).</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-zinc-100 text-sm leading-none">•</span>
+                  <span>We specifically left student 10003 unregistered. Try logging in with 10003 to see the password setup flow.</span>
+                </li>
+              </ul>
+            </div>
+            
+            {/* Action Close Button */}
+            <div className="pt-4 border-t border-zinc-800/60">
+              <button 
+                onClick={() => {
+                  setShowInfoCard(false);
+                  localStorage.setItem('cb-demo-card-dismissed', 'true');
+                }}
+                className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-xs font-bold py-3.5 rounded-xl transition-colors cursor-pointer text-center"
+              >
+                Got it, let&apos;s start!
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <footer className="absolute bottom-6 w-full text-center">
         <p className="text-lg font-normal font-pixel text-zinc-600">CampusBytes.</p>

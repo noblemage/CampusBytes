@@ -1,13 +1,24 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 require('dotenv').config();
 const { PrismaClient } = require('@prisma/client');
-const { Pool } = require('pg');
-const { PrismaPg } = require('@prisma/adapter-pg');
 const bcrypt = require('bcryptjs');
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+let prisma;
+const databaseUrl = process.env.DATABASE_URL;
+
+if (databaseUrl?.startsWith('postgresql://') || databaseUrl?.startsWith('postgres://')) {
+  const { Pool } = require('pg');
+  const { PrismaPg } = require('@prisma/adapter-pg');
+  const pool = new Pool({ connectionString: databaseUrl });
+  const adapter = new PrismaPg(pool);
+  prisma = new PrismaClient({ adapter });
+} else if (databaseUrl?.startsWith('file:')) {
+  const { PrismaBetterSqlite3 } = require('@prisma/adapter-better-sqlite3');
+  const adapter = new PrismaBetterSqlite3({ url: databaseUrl });
+  prisma = new PrismaClient({ adapter });
+} else {
+  prisma = new PrismaClient();
+}
 
 async function main() {
   console.log('Generating password hash...');

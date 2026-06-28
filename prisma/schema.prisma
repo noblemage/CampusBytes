@@ -1,9 +1,10 @@
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
 }
 
 generator client {
   provider = "prisma-client-js"
+  engineType = "library"
 }
 
 model Student {
