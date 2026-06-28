@@ -17,18 +17,20 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22 # Bumped to 22 to satisfy @prisma/streams-local
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
+        env: # Moved DATABASE_URL here so postinstall prisma generate succeeds
+          DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
 
       - name: Run linter
         run: npm run lint
 
       - name: Run build
         run: npm run build
-        env:
+        env: # Keeping the rest here for the build step
           DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
           JWT_SECRET: "dummy_jwt_secret_for_github_actions_build_verification_only"
           QR_SECRET: "dummy_qr_secret_for_github_actions_build_verification_only"
