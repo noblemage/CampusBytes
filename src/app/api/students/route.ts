@@ -63,6 +63,11 @@ export async function GET(request: Request) {
       }
     });
 
+    // Fetch daily menu for the target date
+    const dailyMenu = await prisma.dailyMenu.findUnique({
+      where: { date: targetDate }
+    });
+
     // Generate secure HMAC QR codes on the server so the secret never touches the client
     const slots = [
       { slot: '01', name: 'Breakfast' },
@@ -80,7 +85,7 @@ export async function GET(request: Request) {
       });
     }
 
-    return NextResponse.json({ student, redemptions, date: targetDate, hasBiometrics, mealCodes });
+    return NextResponse.json({ student, redemptions, date: targetDate, hasBiometrics, mealCodes, dailyMenu });
   } catch (error) {
     console.error("Error retrieving student details:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

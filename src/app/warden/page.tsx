@@ -55,6 +55,12 @@ export default function WardenDashboard() {
   const [searchRedemptions, setSearchRedemptions] = useState<Redemption[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
+  // Daily Menu
+  const [menuBreakfast, setMenuBreakfast] = useState('');
+  const [menuLunch, setMenuLunch] = useState('');
+  const [menuDinner, setMenuDinner] = useState('');
+  const [isSavingMenu, setIsSavingMenu] = useState(false);
+
   const fetchMetrics = async (date: string) => {
     try {
       const res = await fetch(`/api/warden/metrics?date=${date}`);
@@ -68,6 +74,20 @@ export default function WardenDashboard() {
     }
   };
 
+  const fetchMenu = async (date: string) => {
+    try {
+      const res = await fetch(`/api/warden/menu?date=${date}`);
+      if (res.ok) {
+        const data = await res.json();
+        setMenuBreakfast(data.menu?.breakfast || '');
+        setMenuLunch(data.menu?.lunch || '');
+        setMenuDinner(data.menu?.dinner || '');
+      }
+    } catch (err) {
+      console.error('Error fetching menu', err);
+    }
+  };
+
   // Check auth and set date
   useEffect(() => {
     async function checkAuth() {
@@ -77,6 +97,7 @@ export default function WardenDashboard() {
         if (res.ok && data.authenticated) {
           setWarden(data.warden);
           fetchMetrics(currentDate);
+          fetchMenu(currentDate);
         } else {
           router.push('/warden/login');
         }
@@ -199,6 +220,30 @@ export default function WardenDashboard() {
       fetchMetrics(currentDate);
     } catch (err: any) {
       toast.error(err.message || 'Direct redemption failed');
+    }
+  };
+
+  const handleSaveMenu = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingMenu(true);
+    try {
+      const res = await fetch('/api/warden/menu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: currentDate,
+          breakfast: menuBreakfast,
+          lunch: menuLunch,
+          dinner: menuDinner
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save menu');
+      toast.success('Menu saved successfully');
+    } catch (err: any) {
+      toast.error(err.message || 'Error saving menu');
+    } finally {
+      setIsSavingMenu(false);
     }
   };
 
@@ -467,6 +512,50 @@ export default function WardenDashboard() {
                   )}
                 </div>
               )}
+            </div>
+
+            {/* TODAY'S MENU */}
+            <div className="glass-card p-8 rounded-3xl border border-zinc-800 shadow-lg space-y-6">
+              <h3 className="text-xl font-bold text-zinc-100">Today&apos;s Menu</h3>
+              <form onSubmit={handleSaveMenu} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-zinc-400 block">Breakfast</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Idli, Sambar, Chutney"
+                    value={menuBreakfast}
+                    onChange={(e) => setMenuBreakfast(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-5 py-4 text-base font-bold text-zinc-100 placeholder-zinc-600 focus:border-zinc-500"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-zinc-400 block">Lunch</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Rice, Dal, Chapati, Paneer"
+                    value={menuLunch}
+                    onChange={(e) => setMenuLunch(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-5 py-4 text-base font-bold text-zinc-100 placeholder-zinc-600 focus:border-zinc-500"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-zinc-400 block">Dinner</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Fried Rice, Manchurian"
+                    value={menuDinner}
+                    onChange={(e) => setMenuDinner(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-5 py-4 text-base font-bold text-zinc-100 placeholder-zinc-600 focus:border-zinc-500"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isSavingMenu}
+                  className="w-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 px-8 py-4 rounded-xl text-base font-bold transition-colors cursor-pointer mt-2"
+                >
+                  {isSavingMenu ? 'Saving...' : 'Save Menu'}
+                </button>
+              </form>
             </div>
 
           </div>

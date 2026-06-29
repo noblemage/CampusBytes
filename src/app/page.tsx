@@ -41,6 +41,7 @@ export default function Home() {
   const [biometricMessage, setBiometricMessage] = useState('');
   const [hasBiometrics, setHasBiometrics] = useState(false);
   const [showInfoCard, setShowInfoCard] = useState(false);
+  const [dailyMenu, setDailyMenu] = useState<{ [key: string]: string }>({});
 
   useEffect(() => {
     setTimeout(() => {
@@ -89,6 +90,15 @@ export default function Home() {
       setStudentRedemptions(data.redemptions);
       setHasBiometrics(!!data.hasBiometrics);
       setStudentMealCodes(data.mealCodes || []);
+      if (data.dailyMenu) {
+        setDailyMenu({
+          '01': data.dailyMenu.breakfast || '',
+          '02': data.dailyMenu.lunch || '',
+          '03': data.dailyMenu.dinner || ''
+        });
+      } else {
+        setDailyMenu({});
+      }
       setAuthStep('logged_in');
     } catch (err) {
       toast.error('Could not load dashboard data.');
@@ -536,6 +546,9 @@ export default function Home() {
                             </button>
                           )}
                         </div>
+                        <div className="mt-3 text-sm text-zinc-400 text-center w-full capitalize">
+                          {dailyMenu[item.slot] || 'Menu not updated yet.'}
+                        </div>
                       </div>
                     );
                   })}
@@ -590,9 +603,11 @@ export default function Home() {
                   </div>
                 ) : (
                   <div className="animate-fade-in space-y-6">
-                    <div>
+                    <div className="text-center">
                       <h4 className="text-xl font-bold text-zinc-100">{selectedQrCode.name} Pass</h4>
-                      <p className="text-sm text-zinc-400 mt-1">Show to scanner.</p>
+                      <p className="text-sm text-zinc-400 mt-1 capitalize">
+                        {dailyMenu[selectedQrCode.slot] || 'Menu not updated yet.'}
+                      </p>
                     </div>
                     <div className="flex justify-center bg-zinc-100 p-4 rounded-2xl shadow-inner mx-auto max-w-[240px]">
                       {/* eslint-disable-next-line @next/next/no-img-element */}

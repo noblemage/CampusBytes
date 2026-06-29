@@ -49,3 +49,9 @@ model Warden {
   redemptions  MealRedemption[]
 }
 
+model DailyMenu {
+  date      String @id // Format: YYYY-MM-DD
+  breakfast String?
+  lunch     String?
+  dinner    String?
+}
