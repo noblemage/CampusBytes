@@ -8,7 +8,7 @@ Students pull up a QR code on their phone, the warden scans it, and boom, checki
 
 - Students log in using a password or just a passkey (can be FaceID or Fingerprint, whatever their phone supports). Super quick.
 - Every day, they get a fresh, uniquely generated QR pass for breakfast, lunch, and dinner.
-- **Warden Kiosk Mode:** Mount a tablet at the entrance and launch Kiosk Mode. It provides a full-screen, high-speed camera scanner with instant green/red visual and Web Audio API feedback, automating the entire queue.
+- Warden Kiosk Mode: It provides a full-screen, high-speed camera scanner with instant green/red visual and Web Audio API feedback, automating the entire queue.
 - If someone forgets their phone, the warden can look them up manually via the dashboard.
 - There's a live dashboard tracking exactly how many meals have been served so far.
 
@@ -20,7 +20,7 @@ If you just want to poke around without setting up a database, the app has a bui
 - Try logging in as a paid student (`10001`), an unpaid student (`10002`), or the warden (`warden_demo`).
 - We specifically left student `10003` unregistered. Try logging in with `10003` to see the password setup flow. It pretends to register you but doesn't actually touch the database, so the next visitor can try it too.
 - Want to host this yourself to show it off? Run `npx prisma db seed`. It wipes the database and sets up these exact demo accounts.
-
+ 
 **Want to turn the demo off?** Just remove `NEXT_PUBLIC_ENABLE_DEMO_MODE="true"` from your `.env` file.
 
 ## Under the hood (Security)
