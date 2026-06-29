@@ -32,9 +32,9 @@ If you just want to poke around without setting up a database, the app has a bui
 
 ## The Stack
 
-- Next.js 16 (App Router)
-- PostgreSQL on Supabase (managed via Prisma)
-- SimpleWebAuthn (for those sweet passkeys)
+- Next.js 16
+- PostgreSQL on Supabase
+- SimpleWebAuthn
 - Upstash Redis
 - Tailwind CSS v4
 
