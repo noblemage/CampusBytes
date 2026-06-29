@@ -3,6 +3,9 @@ import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { getWardenSession } from '@/lib/auth';
 import { getLocalDate } from '@/lib/timezone';
+import { Redis } from '@upstash/redis';
+
+const redis = Redis.fromEnv();
 
 // Helper to generate HMAC-SHA256 hash
 function generateHMAC(data: string): string {
@@ -21,7 +24,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { token, date } = body; // token can be the hash or the raw code like "10001-2026-06-18-01"
+    const { token, date, autoRedeem } = body; // token can be the hash or the raw code like "10001-2026-06-18-01"
 
     if (!token) {
       return NextResponse.json({ error: "Missing token to verify" }, { status: 400 });
@@ -112,10 +115,43 @@ export async function POST(request: Request) {
 
     const mealName = mealSlot === '01' ? 'Breakfast' : mealSlot === '02' ? 'Lunch' : 'Dinner';
 
+    let redeemedNow = false;
+    let finalRedemption = existingRedemption;
+
+    if (!existingRedemption && autoRedeem) {
+      try {
+        finalRedemption = await prisma.mealRedemption.create({
+          data: { studentId, date: targetDate, mealSlot, wardenId: wardenSession.wardenId }
+        });
+        redeemedNow = true;
+
+        try {
+          await redis.del(`metrics:${targetDate}`);
+        } catch (e) {
+          console.error('Redis metrics invalidation failed:', e);
+        }
+      } catch (dbError: any) {
+        if (dbError.code === 'P2002') {
+          return NextResponse.json({
+            valid: true,
+            redeemed: true,
+            student,
+            mealSlot,
+            mealName,
+            date: targetDate,
+            hash: computedHash,
+            rawCode: `${studentId}-${targetDate}-${mealSlot}`
+          });
+        }
+        throw dbError;
+      }
+    }
+
     return NextResponse.json({
       valid: true,
       redeemed: !!existingRedemption,
-      redeemedAt: existingRedemption?.redeemedAt || null,
+      redeemedNow,
+      redeemedAt: finalRedemption?.redeemedAt || null,
       student,
       mealSlot,
       mealName,

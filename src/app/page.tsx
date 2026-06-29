@@ -75,7 +75,7 @@ export default function Home() {
     }
     if (studentMealCodes.length > 0) generateQRs();
     else setTimeout(() => setQrUrls(prev => Object.keys(prev).length > 0 ? {} : prev), 0);
-  }, [studentMealCodes]);
+  }, [studentMealCodes, studentIdInput]);
 
   // Ref to prevent duplicate in-flight fetchDashboardData calls (Opt 5)
   const isFetchingDashboard = useRef(false);
