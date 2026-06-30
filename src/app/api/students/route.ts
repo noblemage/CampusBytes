@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { getSession, getWardenSession } from '@/lib/auth';
+import { getLocalDate } from '@/lib/timezone';
+import { Redis } from '@upstash/redis';
+
+const redis = Redis.fromEnv();
 
 
 function generateHMAC(data: string): string {
@@ -38,35 +42,56 @@ export async function GET(request: Request) {
     // Fetch student
     const student = await prisma.student.findUnique({
       where: { studentId },
-      include: { authenticators: true }
+      select: {
+        studentId: true,
+        name: true,
+        paidStatus: true,
+        _count: {
+          select: { authenticators: true }
+        }
+      }
     });
 
     let hasBiometrics = false;
     // Remove sensitive fields
     if (student) {
-      hasBiometrics = student.authenticators.length > 0;
-      delete (student as any).passwordHash;
-      delete (student as any).currentWebAuthnChallenge;
-      delete (student as any).authenticators;
+      hasBiometrics = student._count.authenticators > 0;
+      delete (student as any)._count;
     }
 
     if (!student) {
       return NextResponse.json({ error: "Student not found" }, { status: 404 });
     }
 
-    // Fetch redemptions for the student on the given date (default to today if not provided)
-    const targetDate = dateStr || new Date().toISOString().split('T')[0];
+    // Fetch redemptions - only grab mealSlot, it's the only field the student UI needs
+    const targetDate = dateStr || getLocalDate();
     const redemptions = await prisma.mealRedemption.findMany({
-      where: {
-        studentId,
-        date: targetDate
-      }
+      where: { studentId, date: targetDate },
+      select: { mealSlot: true }
     });
 
-    // Fetch daily menu for the target date
-    const dailyMenu = await prisma.dailyMenu.findUnique({
-      where: { date: targetDate }
-    });
+    // Fetch daily menu for the target date (Check Redis cache first)
+    let dailyMenu = null;
+    const redisKey = `menu:${targetDate}`;
+    try {
+      dailyMenu = await redis.get(redisKey);
+    } catch (e) {
+      console.error("Redis fetch failed:", e);
+    }
+
+    if (!dailyMenu) {
+      dailyMenu = await prisma.dailyMenu.findUnique({
+        where: { date: targetDate }
+      });
+      if (dailyMenu) {
+        try {
+          // Cache in Redis for 24 hours (86400 seconds)
+          await redis.set(redisKey, dailyMenu, { ex: 86400 });
+        } catch (e) {
+          console.error("Redis set failed:", e);
+        }
+      }
+    }
 
     // Generate secure HMAC QR codes on the server so the secret never touches the client
     const slots = [
@@ -88,7 +113,9 @@ export async function GET(request: Request) {
       totpSecret = generateHMAC(student.studentId.toString());
     }
 
-    return NextResponse.json({ student, redemptions, date: targetDate, hasBiometrics, mealCodes, dailyMenu, totpSecret });
+    const response = NextResponse.json({ student, redemptions, date: targetDate, hasBiometrics, mealCodes, dailyMenu, totpSecret });
+    response.headers.set('Cache-Control', 'private, max-age=5');
+    return response;
   } catch (error) {
     console.error("Error retrieving student details:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
@@ -126,7 +153,7 @@ export async function POST(request: Request) {
     }
 
     if (student.paidStatus !== 1) {
-      return NextResponse.json({ error: "Mess fees unpaid. Meal redemption blocked." }, { status: 403 });
+      return NextResponse.json({ error: "Mess fees unpaid. Meal check-in blocked." }, { status: 403 });
     }
 
     // Check if slot is valid ('01', '02', '03')
@@ -137,18 +164,21 @@ export async function POST(request: Request) {
     // Create redemption record (Unique constraint prevents double redemption)
     try {
       const redemption = await prisma.mealRedemption.create({
-        data: {
-          studentId: sId,
-          date,
-          mealSlot,
-          wardenId: wardenSession.wardenId
-        }
+        data: { studentId: sId, date, mealSlot, wardenId: wardenSession.wardenId }
       });
+
+      // Invalidate the metrics cache so the warden dashboard reflects the new check-in within the next refresh cycle
+      try {
+        await redis.del(`metrics:${date}`);
+      } catch (e) {
+        console.error('Redis metrics invalidation failed:', e);
+      }
+
       return NextResponse.json({ success: true, redemption });
     } catch (dbError: any) {
       // Unique constraint code in prisma is P2002
       if (dbError.code === 'P2002') {
-        return NextResponse.json({ error: "This meal slot has already been redeemed for today." }, { status: 400 });
+        return NextResponse.json({ error: "This meal slot has already been checked in for today." }, { status: 400 });
       }
       throw dbError;
     }

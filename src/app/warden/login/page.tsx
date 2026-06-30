@@ -29,7 +29,7 @@ export default function WardenLoginPage() {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Login failed');
+        throw new Error(data.error || 'Sign-in failed.');
       }
 
       router.push('/warden');
@@ -45,7 +45,7 @@ export default function WardenLoginPage() {
 
       <div className="glass-card max-w-md w-full p-10 rounded-3xl space-y-8 shadow-2xl border border-zinc-800 animate-fade-in animate-float">
         <div className="text-center space-y-3 border-b border-zinc-800 pb-6">
-          <h2 className="text-2xl font-bold text-zinc-100">Warden Login</h2>
+          <h2 className="text-2xl font-bold text-zinc-100">Warden Sign In</h2>
           <p className="text-sm text-zinc-400">Sign in to access dashboard.</p>
         </div>
 

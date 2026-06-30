@@ -7,7 +7,7 @@ import { Ratelimit } from '@upstash/ratelimit';
 // This is fully Edge compatible and uses UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN
 const ratelimit = new Ratelimit({
   redis: Redis.fromEnv(),
-  limiter: Ratelimit.slidingWindow(10, '30 s'),
+  limiter: Ratelimit.slidingWindow(500, '30 s'),
   analytics: true,
   /**
    * Optional prefix for the keys used in redis. This is useful if you want to share a redis
@@ -18,8 +18,9 @@ const ratelimit = new Ratelimit({
 });
 
 export async function proxy(request: NextRequest) {
-  // Only apply to /api/students routes
-  if (!request.nextUrl.pathname.startsWith('/api/students')) {
+  // Only apply to POST /api/students routes (warden check-ins)
+  // We skip rate limiting for GET because students poll this route, which would exhaust Redis limits and block campus IPs
+  if (!request.nextUrl.pathname.startsWith('/api/students') || request.method !== 'POST') {
     return NextResponse.next();
   }
 

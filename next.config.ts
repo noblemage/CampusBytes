@@ -27,7 +27,7 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  ...(process.env.NODE_ENV === 'development' ? { allowedDevOrigins: ['vkdpu-92-99-139-94.run.pinggy-free.link'] } : {}),
+  ...(process.env.NODE_ENV === 'development' ? { allowedDevOrigins: [''] } : {}),
 };
 
 export default nextConfig;

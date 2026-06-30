@@ -39,6 +39,7 @@ model MealRedemption {
   warden     Warden?  @relation(fields: [wardenId], references: [id], onDelete: SetNull)
 
   @@unique([studentId, date, mealSlot])
+  @@index([date])
 }
 
 model Warden {

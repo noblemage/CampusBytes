@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { getWardenSession } from '@/lib/auth';
+import { getLocalDate } from '@/lib/timezone';
+import { Redis } from '@upstash/redis';
+
+const redis = Redis.fromEnv();
 
 import { verifyTOTP } from '@/lib/totp';
 
@@ -20,14 +24,13 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { token, date } = body;
+    const { token, date, autoRedeem } = body;
 
     if (!token) {
       return NextResponse.json({ error: "Missing token to verify" }, { status: 400 });
     }
 
-    const targetDate = date || new Date().toISOString().split('T')[0];
-    
+    const targetDate = date || getLocalDate();
     let studentId = 0;
     let mealSlot = '';
     let computedHash = '';
@@ -60,35 +63,48 @@ export async function POST(request: Request) {
       const rawCodePattern = /^\d{5}-\d{4}-\d{2}-\d{2}-\d{2}$/;
       
       if (rawCodePattern.test(token)) {
+        // It is a raw code
         const parts = token.split('-');
         studentId = parseInt(parts[0], 10);
         mealSlot = parts[4];
         computedHash = generateHMAC(token);
       } else {
-        const allStudents = await prisma.student.findMany();
         let foundMatch = false;
 
-        for (const student of allStudents) {
-          if (student.paidStatus !== 1) continue;
+        // OPTIMIZED O(1) LOOKUP: Check if the token is prefixed with a student ID (e.g., "10001:hash")
+        if (token.includes(':')) {
+          const parts = token.split(':');
+          const sId = parseInt(parts[0], 10);
+          const hashPart = parts[1];
 
-          const slots = ['01', '02', '03'];
-          for (const slot of slots) {
-            const rawString = `${student.studentId}-${targetDate}-${slot}`;
-            const hashVal = generateHMAC(rawString);
-            
-            if (hashVal === token) {
-              studentId = student.studentId;
-              mealSlot = slot;
-              computedHash = hashVal;
-              foundMatch = true;
-              break;
+          if (!isNaN(sId) && hashPart) {
+            const student = await prisma.student.findUnique({
+              where: { studentId: sId }
+            });
+
+            if (student && student.paidStatus === 1) {
+              const slots = ['01', '02', '03'];
+              for (const slot of slots) {
+                const rawString = `${student.studentId}-${targetDate}-${slot}`;
+                const hashVal = generateHMAC(rawString);
+
+                if (hashVal === hashPart) {
+                  studentId = student.studentId;
+                  mealSlot = slot;
+                  computedHash = hashVal;
+                  foundMatch = true;
+                  break;
+                }
+              }
             }
           }
-          if (foundMatch) break;
         }
 
         if (!foundMatch) {
-          return NextResponse.json({ valid: false, error: "Invalid token or code doesn't match any paid student for this date." }, { status: 404 });
+          return NextResponse.json({
+            valid: false,
+            error: "Invalid token or code doesn't match any paid student for this date."
+          }, { status: 404 });
         }
       }
     }
@@ -119,10 +135,43 @@ export async function POST(request: Request) {
 
     const mealName = mealSlot === '01' ? 'Breakfast' : mealSlot === '02' ? 'Lunch' : 'Dinner';
 
+    let redeemedNow = false;
+    let finalRedemption = existingRedemption;
+
+    if (!existingRedemption && autoRedeem) {
+      try {
+        finalRedemption = await prisma.mealRedemption.create({
+          data: { studentId, date: targetDate, mealSlot, wardenId: wardenSession.wardenId }
+        });
+        redeemedNow = true;
+
+        try {
+          await redis.del(`metrics:${targetDate}`);
+        } catch (e) {
+          console.error('Redis metrics invalidation failed:', e);
+        }
+      } catch (dbError: any) {
+        if (dbError.code === 'P2002') {
+          return NextResponse.json({
+            valid: true,
+            redeemed: true,
+            student,
+            mealSlot,
+            mealName,
+            date: targetDate,
+            hash: computedHash,
+            rawCode: `${studentId}-${targetDate}-${mealSlot}`
+          });
+        }
+        throw dbError;
+      }
+    }
+
     return NextResponse.json({
       valid: true,
       redeemed: !!existingRedemption,
-      redeemedAt: existingRedemption?.redeemedAt || null,
+      redeemedNow,
+      redeemedAt: finalRedemption?.redeemedAt || null,
       student,
       mealSlot,
       mealName,
