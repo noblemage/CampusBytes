@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import QRCode from 'qrcode';
 import { generateTOTP } from '@/lib/totp';
 import { startRegistration, startAuthentication } from '@simplewebauthn/browser';
 import { toast } from 'sonner';
 import DailyMenuOrdering from '@/components/DailyMenuOrdering';
+import ActiveOrders from '@/components/ActiveOrders';
 
 interface Student {
   studentId: number;
@@ -69,6 +69,7 @@ export default function Home() {
   useEffect(() => {
     async function generateQRs() {
       const urls: Record<string, string> = {};
+      const QRCode = (await import('qrcode')).default;
       for (const item of studentMealCodes) {
         if (!item.hash) continue;
         try {
@@ -205,6 +206,7 @@ export default function Home() {
         payload = `${studentIdInput}:${currentSelected.hash}`;
       }
       try {
+        const QRCode = (await import('qrcode')).default;
         const url = await QRCode.toDataURL(payload, {
           width: 400,
           margin: 2,
@@ -346,7 +348,6 @@ export default function Home() {
 
       await fetchDashboardData();
     } catch (err: any) {
-      console.error(err);
       toast.error(err.message || 'Biometric login failed.');
     } finally {
       setIsAuthenticating(false);
@@ -409,12 +410,85 @@ export default function Home() {
   };
 
   // --- Components ---
+  const isDashboardMode = authStep === 'logged_in' || (authStep === 'choose_section' && selectedSection !== null);
 
   return (
-    <main className={`min-h-screen pb-24 text-zinc-100 relative overflow-hidden font-sans ${authStep !== 'logged_in' ? 'flex flex-col justify-center items-center' : ''}`}>
+    <main className="min-h-screen pb-24 text-zinc-100 relative overflow-x-hidden font-sans flex flex-col">
 
-      {/* --- STUDENT PORTAL --- */}
-      <section className={`w-full px-4 ${authStep === 'choose_section' ? 'max-w-2xl' : authStep !== 'logged_in' ? 'max-w-md animate-float' : 'max-w-md md:max-w-4xl mx-auto mt-8'}`}>
+      {/* Starry Name Plate Header (for both sections) */}
+      {isDashboardMode && activeStudent && (
+        <header className="w-full px-4 max-w-md md:max-w-4xl mx-auto pt-4 sm:pt-8 shrink-0">
+          <div className="bg-black p-4 sm:p-6 rounded-2xl flex justify-between items-center border border-zinc-800/80 relative overflow-hidden animate-fade-in w-full shadow-xl gap-2">
+            {/* Star backdrop wrapper with delayed fade-in */}
+            <div className="absolute inset-0 w-full h-full pointer-events-none animate-stars-fade select-none">
+              {/* Rich Star field */}
+              <svg className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg">
+                {/* Tiny background stars */}
+                <circle cx="5%" cy="30%" r="0.8" className="fill-white/30" />
+                <circle cx="12%" cy="70%" r="1" className="fill-white/40 animate-[pulse_3s_infinite_0.5s]" />
+                <circle cx="22%" cy="15%" r="0.8" className="fill-white/30" />
+                <circle cx="28%" cy="85%" r="1.2" className="fill-white/60 animate-[pulse_2.5s_infinite]" />
+                <circle cx="38%" cy="25%" r="1" className="fill-white/40 animate-[pulse_3s_infinite_1.2s]" />
+                <circle cx="45%" cy="60%" r="0.8" className="fill-white/30" />
+                <circle cx="50%" cy="15%" r="1.2" className="fill-white/80 animate-[pulse_2s_infinite]" />
+                <circle cx="58%" cy="75%" r="1" className="fill-white/50 animate-[pulse_4s_infinite_0.5s]" />
+                <circle cx="64%" cy="35%" r="1.5" className="fill-white/60 animate-[pulse_2.5s_infinite_1s]" />
+                <circle cx="70%" cy="85%" r="0.8" className="fill-white/40" />
+                <circle cx="76%" cy="20%" r="1.2" className="fill-white/90 animate-[pulse_3.5s_infinite_1.2s]" />
+                <circle cx="82%" cy="60%" r="1" className="fill-white/60 animate-[pulse_2s_infinite_0.8s]" />
+                <circle cx="88%" cy="80%" r="1.5" className="fill-white/70 animate-[pulse_3s_infinite_1.5s]" />
+                <circle cx="92%" cy="25%" r="0.8" className="fill-white/40" />
+                <circle cx="96%" cy="65%" r="1.2" className="fill-white/80 animate-[pulse_4s_infinite_2s]" />
+                <circle cx="98%" cy="15%" r="1.5" className="fill-white/90 animate-[pulse_2.5s_infinite_0.3s]" />
+
+                {/* Shining 4-point star flares */}
+                <svg x="40%" y="30%" className="overflow-visible animate-[pulse_2.5s_infinite_0.8s]">
+                  <path d="M0 -3 L0.7 -0.7 L3 0 L0.7 0.7 L0 3 L-0.7 0.7 L-3 0 L-0.7 -0.7 Z" fill="#ffffff" />
+                </svg>
+                <svg x="62%" y="20%" className="overflow-visible animate-[pulse_2s_infinite_0.5s]">
+                  <path d="M0 -3.5 L0.8 -0.8 L3.5 0 L0.8 0.8 L0 3.5 L-0.8 0.8 L-3.5 0 L-0.8 -0.8 Z" fill="#ffffff" />
+                </svg>
+                <svg x="78%" y="70%" className="overflow-visible animate-[pulse_3s_infinite_1.5s]">
+                  <path d="M0 -4 L1 -1 L4 0 L1 1 L0 4 L-1 1 L-4 0 L-1 -1 Z" fill="#ffffff" />
+                </svg>
+                <svg x="90%" y="35%" className="overflow-visible animate-[pulse_2.5s_infinite_1s]">
+                  <path d="M0 -3.5 L0.8 -0.8 L3.5 0 L0.8 0.8 L0 3.5 L-0.8 0.8 L-3.5 0 L-0.8 -0.8 Z" fill="#ffffff" />
+                </svg>
+              </svg>
+
+              {/* Gradient overlay to smoothly hide stars behind the name/ID text */}
+              <div className="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-transparent w-[50%] z-0"></div>
+
+              {/* Shooting Stars */}
+              <div className="absolute top-0 right-[15%] w-[120px] h-[1px] bg-gradient-to-r from-white to-transparent origin-left animate-shoot-1 z-0"></div>
+              <div className="absolute top-1 right-[35%] w-[90px] h-[1px] bg-gradient-to-r from-white/70 to-transparent origin-left animate-shoot-2 z-0"></div>
+            </div>
+
+            <div className="space-y-1 text-left relative z-10 shrink-0">
+              <h3 className="text-base sm:text-lg font-bold text-zinc-100 leading-tight">{activeStudent.name}</h3>
+              <p className="text-xs sm:text-sm text-zinc-400">ID: <span className="text-zinc-200 font-medium">{activeStudent.studentId}</span></p>
+            </div>
+            <div className="flex gap-2 relative z-10 shrink-0">
+              <button onClick={() => { setAuthStep('choose_section'); setSelectedSection(null); }} className="px-3 sm:px-4 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-300 hover:text-white text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4 sm:hidden">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+                </svg>
+                <span className="hidden sm:inline">Menu</span>
+              </button>
+              <button onClick={handleStudentLogout} className="px-3 sm:px-4 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-300 hover:text-white text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4 sm:hidden">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+                </svg>
+                <span className="hidden sm:inline">Sign Out</span>
+              </button>
+            </div>
+          </div>
+        </header>
+      )}
+
+      {/* --- STUDENT PORTAL CONTENT --- */}
+      <div className="flex-1 flex flex-col w-full py-8 md:py-12">
+        <section className={`w-full px-4 my-auto ${isDashboardMode ? 'max-w-md md:max-w-4xl mx-auto' : authStep === 'choose_section' ? 'max-w-2xl mx-auto' : 'max-w-md animate-float mx-auto'}`}>
 
         {authStep === 'id' && (
           <>
@@ -576,15 +650,22 @@ export default function Home() {
                 className="glass-card group relative p-8 rounded-2xl text-left cursor-pointer transition-colors focus:outline-none overflow-hidden"
               >
                 <div className="space-y-4">
-                  <div className="w-14 h-14 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-7 h-7 text-zinc-300">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75H16.5v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75H16.5v-.75z" />
-                    </svg>
+                  <div className="flex justify-between items-start">
+                    <div className="w-14 h-14 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-7 h-7 text-zinc-300">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75H16.5v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75H16.5v-.75z" />
+                      </svg>
+                    </div>
+                    {activeStudent.paidStatus !== 1 && (
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5 text-red-400 mt-4 mr-1">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                      </svg>
+                    )}
                   </div>
                   <div className="space-y-1.5">
                     <h3 className="text-xl font-bold text-zinc-100">Hostlers Menu</h3>
-                    <p className="text-sm text-zinc-400 leading-relaxed">View your daily QR passes, check-in status, and manage biometrics.</p>
+                    <p className="text-sm text-zinc-400 leading-relaxed">View your daily QR passes and check-in status.</p>
                   </div>
                   <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-400 group-hover:text-zinc-200 transition-colors pt-1">
                     <span>Open</span>
@@ -596,14 +677,35 @@ export default function Home() {
               </button>
             </div>
 
+            {/* Biometrics Settings */}
+            <div className="pt-4">
+              <div className="glass-card p-6 rounded-2xl flex flex-col items-center text-center border border-zinc-800 bg-zinc-900/50 space-y-4 max-w-sm mx-auto">
+                <div className="space-y-1">
+                  <h4 className="text-base font-bold text-zinc-100 flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
+                    Passkey Sign-In
+                  </h4>
+                  <p className="text-sm text-zinc-400">
+                    {!isSecureEnv ? 'Passkeys require a secure HTTPS connection. They are disabled on local HTTP networks.' : (hasBiometrics ? 'You have registered this device for instant sign-in.' : 'Register this device to sign in instantly next time.')}
+                  </p>
+                </div>
+                <button onClick={handleRegisterBiometric} disabled={isRegisteringBiometric || !isSecureEnv} className={`w-full max-w-sm px-4 py-3 rounded-xl text-sm font-bold transition-all ${!isSecureEnv ? 'bg-zinc-900 text-zinc-600 border border-zinc-800 cursor-not-allowed' : 'bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-white cursor-pointer'}`}>
+                  {isRegisteringBiometric ? 'Registering...' : (hasBiometrics ? 'Re-register Device' : 'Register Device')}
+                </button>
+                {biometricMessage && <p className="text-sm text-zinc-100 font-medium bg-zinc-800 border border-zinc-600 px-4 py-2 rounded-lg w-full max-w-sm mt-2">{biometricMessage}</p>}
+              </div>
+            </div>
+
             {/* Sign out link */}
-            <div className="text-center">
-              <button onClick={handleStudentLogout} className="text-xs text-zinc-500 hover:text-zinc-300 font-medium cursor-pointer transition-colors">
-                Sign out
+            <div className="text-center pt-2">
+              <button onClick={handleStudentLogout} className="px-6 py-2.5 bg-zinc-900 border border-zinc-700 hover:bg-zinc-800 rounded-xl text-zinc-300 hover:text-white text-sm font-bold transition-colors cursor-pointer inline-flex items-center justify-center">
+                Sign Out
               </button>
             </div>
           </div>
         )}
+
+
 
         {authStep === 'choose_section' && selectedSection === 'daily_ordering' && activeStudent && (
           <div className="space-y-6 animate-fade-in w-full">
@@ -611,96 +713,16 @@ export default function Home() {
               studentId={activeStudent.studentId}
               onBack={() => setSelectedSection(null)}
             />
-
-            {/* Sign out link */}
-            <div className="text-center">
-              <button onClick={handleStudentLogout} className="text-xs text-zinc-500 hover:text-zinc-300 font-medium cursor-pointer transition-colors">
-                Sign out
-              </button>
-            </div>
           </div>
         )}
 
         {authStep === 'logged_in' && activeStudent && (
           <div className="space-y-6 animate-fade-in">
-            <div className="bg-black p-6 rounded-2xl flex justify-between items-center border border-zinc-800/80 relative overflow-hidden">
-              {/* Star backdrop wrapper with delayed fade-in */}
-              <div className="absolute inset-0 w-full h-full pointer-events-none animate-stars-fade select-none">
-                {/* Rich Star field */}
-                <svg className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg">
-                  {/* Tiny background stars */}
-                  <circle cx="5%" cy="30%" r="0.8" className="fill-white/30" />
-                  <circle cx="12%" cy="70%" r="1" className="fill-white/40 animate-[pulse_3s_infinite_0.5s]" />
-                  <circle cx="22%" cy="15%" r="0.8" className="fill-white/30" />
-                  <circle cx="28%" cy="85%" r="1.2" className="fill-white/60 animate-[pulse_2.5s_infinite]" />
-                  <circle cx="38%" cy="25%" r="1" className="fill-white/40 animate-[pulse_3s_infinite_1.2s]" />
-                  <circle cx="45%" cy="60%" r="0.8" className="fill-white/30" />
-                  <circle cx="50%" cy="15%" r="1.2" className="fill-white/80 animate-[pulse_2s_infinite]" />
-                  <circle cx="58%" cy="75%" r="1" className="fill-white/50 animate-[pulse_4s_infinite_0.5s]" />
-                  <circle cx="64%" cy="35%" r="1.5" className="fill-white/60 animate-[pulse_2.5s_infinite_1s]" />
-                  <circle cx="70%" cy="85%" r="0.8" className="fill-white/40" />
-                  <circle cx="76%" cy="20%" r="1.2" className="fill-white/90 animate-[pulse_3.5s_infinite_1.2s]" />
-                  <circle cx="82%" cy="60%" r="1" className="fill-white/60 animate-[pulse_2s_infinite_0.8s]" />
-                  <circle cx="88%" cy="80%" r="1.5" className="fill-white/70 animate-[pulse_3s_infinite_1.5s]" />
-                  <circle cx="92%" cy="25%" r="0.8" className="fill-white/40" />
-                  <circle cx="96%" cy="65%" r="1.2" className="fill-white/80 animate-[pulse_4s_infinite_2s]" />
-                  <circle cx="98%" cy="15%" r="1.5" className="fill-white/90 animate-[pulse_2.5s_infinite_0.3s]" />
-
-                  {/* Shining 4-point star flares */}
-                  <svg x="40%" y="30%" className="overflow-visible animate-[pulse_2.5s_infinite_0.8s]">
-                    <path d="M0 -3 L0.7 -0.7 L3 0 L0.7 0.7 L0 3 L-0.7 0.7 L-3 0 L-0.7 -0.7 Z" fill="#ffffff" />
-                  </svg>
-                  <svg x="62%" y="20%" className="overflow-visible animate-[pulse_2s_infinite_0.5s]">
-                    <path d="M0 -3.5 L0.8 -0.8 L3.5 0 L0.8 0.8 L0 3.5 L-0.8 0.8 L-3.5 0 L-0.8 -0.8 Z" fill="#ffffff" />
-                  </svg>
-                  <svg x="78%" y="70%" className="overflow-visible animate-[pulse_3s_infinite_1.5s]">
-                    <path d="M0 -4 L1 -1 L4 0 L1 1 L0 4 L-1 1 L-4 0 L-1 -1 Z" fill="#ffffff" />
-                  </svg>
-                  <svg x="90%" y="35%" className="overflow-visible animate-[pulse_2.5s_infinite_1s]">
-                    <path d="M0 -3.5 L0.8 -0.8 L3.5 0 L0.8 0.8 L0 3.5 L-0.8 0.8 L-3.5 0 L-0.8 -0.8 Z" fill="#ffffff" />
-                  </svg>
-                </svg>
-
-                {/* Gradient overlay to smoothly hide stars behind the name/ID text */}
-                <div className="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-transparent w-[50%] z-0"></div>
-
-                {/* Shooting Stars */}
-                <div className="absolute top-0 right-[15%] w-[120px] h-[1px] bg-gradient-to-r from-white to-transparent origin-left animate-shoot-1 z-0"></div>
-                <div className="absolute top-1 right-[35%] w-[90px] h-[1px] bg-gradient-to-r from-white/70 to-transparent origin-left animate-shoot-2 z-0"></div>
-              </div>
-
-              <div className="space-y-1 text-left relative z-10">
-                <h3 className="text-lg font-bold text-zinc-100 leading-tight">{activeStudent.name}</h3>
-                <p className="text-sm text-zinc-400">ID: <span className="text-zinc-200 font-medium">{activeStudent.studentId}</span></p>
-              </div>
-              <div className="flex gap-2 relative z-10">
-                <button onClick={() => { setAuthStep('choose_section'); setSelectedSection(null); }} className="px-4 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-300 hover:text-white text-xs font-bold transition-colors cursor-pointer">Menu</button>
-                <button onClick={handleStudentLogout} className="px-4 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-300 hover:text-white text-xs font-bold transition-colors cursor-pointer">Sign Out</button>
-              </div>
-            </div>
-
-            {!hasBiometrics && (
-              <div className="glass-card p-6 rounded-2xl flex flex-col items-center text-center border border-zinc-800 bg-zinc-900/50 space-y-4">
-                <div className="space-y-1">
-                  <h4 className="text-base font-bold text-zinc-100 flex items-center justify-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
-                    Passkey Sign-In
-                  </h4>
-                  <p className="text-sm text-zinc-400">
-                    {!isSecureEnv ? 'Passkeys require a secure HTTPS connection. They are disabled on local HTTP networks.' : 'Register this device to sign in instantly next time.'}
-                  </p>
-                </div>
-                <button onClick={handleRegisterBiometric} disabled={isRegisteringBiometric || !isSecureEnv} className={`w-full max-w-sm px-4 py-3 rounded-xl text-sm font-bold transition-all ${!isSecureEnv ? 'bg-zinc-900 text-zinc-600 border border-zinc-800 cursor-not-allowed' : 'bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-white cursor-pointer'}`}>
-                  {isRegisteringBiometric ? 'Registering...' : 'Register Device'}
-                </button>
-                {biometricMessage && <p className="text-sm text-zinc-100 font-medium bg-zinc-800 border border-zinc-600 px-4 py-2 rounded-lg w-full max-w-sm mt-2">{biometricMessage}</p>}
-              </div>
-            )}
 
             {activeStudent.paidStatus !== 1 ? (
               <div className="bg-red-950/40 border border-red-900 p-8 rounded-2xl text-center space-y-4 shadow-xl max-w-lg mx-auto">
                 <h4 className="text-base font-bold text-red-100">Access Suspended</h4>
-                <p className="text-sm text-red-200/70">Mess fee pending. Clear dues to access passes.</p>
+                <p className="text-sm text-red-200/70">Mess fee pending. Contact the administration.</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -709,7 +731,7 @@ export default function Home() {
                   <span className="text-sm text-zinc-400 font-medium">{currentDate}</span>
                 </div>
 
-                <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
+                <div className="grid gap-3 sm:gap-4 grid-cols-1 md:grid-cols-3">
                   {studentMealCodes.map((item) => {
                     const redeemed = isSlotRedeemed(item.slot, studentRedemptions);
                     const qrUrl = qrUrls[item.slot] || '';
@@ -717,7 +739,7 @@ export default function Home() {
                     return (
                       <div
                         key={item.slot}
-                        className={`glass-card p-6 pt-8 rounded-2xl flex flex-col items-center md:items-start gap-4 relative shadow-lg border ${redeemed
+                        className={`glass-card p-4 sm:p-6 pt-6 sm:pt-8 rounded-2xl flex flex-col items-center md:items-start gap-4 relative shadow-lg border ${redeemed
                           ? 'opacity-60 border-zinc-800 bg-zinc-950'
                           : 'border-zinc-700'
                           }`}
@@ -764,25 +786,6 @@ export default function Home() {
                 </div>
               </div>
             )}
-            {hasBiometrics && (
-              <div className="pt-8">
-                <div className="glass-card p-6 rounded-2xl flex flex-col items-center text-center border border-zinc-800 bg-zinc-900/50 space-y-4">
-                  <div className="space-y-1">
-                    <h4 className="text-base font-bold text-zinc-100 flex items-center justify-center gap-2">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
-                      Passkey Sign-In
-                    </h4>
-                    <p className="text-sm text-zinc-400">
-                      {!isSecureEnv ? 'Passkeys require a secure HTTPS connection. They are disabled on local HTTP networks.' : (hasBiometrics ? 'You have registered this device for instant sign-in.' : 'Register this device to sign in instantly next time.')}
-                    </p>
-                  </div>
-                  <button onClick={handleRegisterBiometric} disabled={isRegisteringBiometric || !isSecureEnv} className={`w-full max-w-sm px-4 py-3 rounded-xl text-sm font-bold transition-all ${!isSecureEnv ? 'bg-zinc-900 text-zinc-600 border border-zinc-800 cursor-not-allowed' : 'bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-white cursor-pointer'}`}>
-                    {isRegisteringBiometric ? 'Registering...' : (hasBiometrics ? 'Re-register Device' : 'Register Device')}
-                  </button>
-                  {biometricMessage && <p className="text-sm text-zinc-100 font-medium bg-zinc-800 border border-zinc-600 px-4 py-2 rounded-lg w-full max-w-sm mt-2">{biometricMessage}</p>}
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -820,7 +823,7 @@ export default function Home() {
                       )}
                     </div>
                     <div className="flex justify-center bg-zinc-100 p-4 rounded-2xl shadow-inner mx-auto max-w-[240px]">
-                      <img src={qrUrl} alt="Large QR Pass" className="w-full h-auto aspect-square" />
+                      {qrUrl && <img src={qrUrl} alt="Large QR Pass" className="w-full h-auto aspect-square" />}
                     </div>
 
                     {/* Timer or Static Indicator */}
@@ -844,6 +847,7 @@ export default function Home() {
           );
         })()}
       </section>
+      </div>
 
       {/* Project Info Card Centered Overlay */}
       {process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true' && (

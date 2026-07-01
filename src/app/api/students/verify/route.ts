@@ -4,12 +4,18 @@ import { prisma } from '@/lib/prisma';
 import { getWardenSession } from '@/lib/auth';
 import { getLocalDate } from '@/lib/timezone';
 import { Redis } from '@upstash/redis';
+import { checkRateLimit, getIp } from '@/lib/rate-limit';
+import { z } from 'zod';
 
 const redis = Redis.fromEnv();
-
 import { verifyTOTP } from '@/lib/totp';
 
-// Helper to generate HMAC-SHA256 hash
+const verifySchema = z.object({
+  token: z.string(),
+  date: z.string().optional(),
+  autoRedeem: z.boolean().optional(),
+});
+
 function generateHMAC(data: string): string {
   const secret = process.env.QR_SECRET;
   if (!secret) throw new Error('QR_SECRET environment variable is required');
@@ -18,36 +24,47 @@ function generateHMAC(data: string): string {
 
 export async function POST(request: Request) {
   try {
+    const ip = getIp(request);
+    const { success: rateSuccess } = await checkRateLimit(`verify:${ip}`, 30, 60 * 1000);
+    if (!rateSuccess) {
+      return NextResponse.json({ error: "Too many scan attempts" }, { status: 429 });
+    }
+
     const wardenSession = await getWardenSession();
     if (!wardenSession) {
       return NextResponse.json({ error: "Unauthorized Warden Access" }, { status: 401 });
     }
 
     const body = await request.json();
-    const { token, date, autoRedeem } = body;
-
-    if (!token) {
-      return NextResponse.json({ error: "Missing token to verify" }, { status: 400 });
+    const parseResult = verifySchema.safeParse(body);
+    if (!parseResult.success) {
+      return NextResponse.json({ error: "Invalid parameters" }, { status: 400 });
     }
+
+    const { token, date, autoRedeem } = parseResult.data;
 
     const targetDate = date || getLocalDate();
     let studentId = 0;
     let mealSlot = '';
     let computedHash = '';
     let isTotpVerified = false;
+    let verifiedTotpToken = '';
 
-    // Check if token is the new TOTP JSON payload
     try {
       if (token.startsWith('{')) {
         const parsed = JSON.parse(token);
         if (parsed.s && parsed.m && parsed.t) {
           studentId = parsed.s;
           mealSlot = parsed.m;
-          const totpToken = parsed.t;
+          verifiedTotpToken = parsed.t;
+
+          const isBurned = await redis.get(`burned_totp:${verifiedTotpToken}`);
+          if (isBurned) {
+             return NextResponse.json({ valid: false, error: "QR Code already used (Replay attack prevented)." }, { status: 403 });
+          }
 
           const studentSecret = generateHMAC(studentId.toString());
-          
-          if (verifyTOTP(totpToken, studentSecret, 30, [1, 0])) {
+          if (verifyTOTP(verifiedTotpToken, studentSecret, 30, [1, 0])) {
             isTotpVerified = true;
           } else {
             return NextResponse.json({ valid: false, error: "Dynamic QR Code has expired or is invalid." }, { status: 400 });
@@ -164,6 +181,14 @@ export async function POST(request: Request) {
           });
         }
         throw dbError;
+      }
+    }
+
+    if (isTotpVerified && verifiedTotpToken) {
+      try {
+        await redis.set(`burned_totp:${verifiedTotpToken}`, 'used', { ex: 60 });
+      } catch (e) {
+        console.error('Failed to burn TOTP token:', e);
       }
     }
 

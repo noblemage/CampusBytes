@@ -6,9 +6,13 @@ If you find something that looks like a vulnerability, don't open a public issue
 
 Each QR pass is a server-generated HMAC-SHA256 hash. The input is `studentId + date + mealSlot`, signed with `QR_SECRET` which never leaves the server.
 
-So you can't screenshot someone else's pass and use it — it's tied to their ID. You can't reuse yesterday's code — the date is in the hash. You can't use a breakfast pass at dinner — the slot is baked in too. Without the secret, there's no way to generate a valid hash.
+The QR payload contains a 30-second rotating TOTP token. Screenshots are useless after half a minute, preventing students from texting passes to their friends. Upon a successful scan, the TOTP token is immediately burned in Redis (Upstash) with a 60-second TTL. This completely neutralizes replay attacks. 
 
 The QR image itself is rendered client-side from the hash. The server only ever deals with the hash string.
+
+## Strict API Validation
+
+All mutating API endpoints are protected by Zod schemas. Incoming JSON payloads are parsed and strictly typed before execution. This ensures that nested objects or malformed arrays cannot be injected into Prisma queries.
 
 ## Double check-ins
 

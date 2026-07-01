@@ -92,6 +92,9 @@ model Order {
   status      String      @default("Pending") // 'Pending', 'Ready', 'PickedUp'
   createdAt   DateTime    @default(now())
   items       OrderItem[]
+
+  @@index([vendorId, status])
+  @@index([studentId, status])
 }
 
 model OrderItem {

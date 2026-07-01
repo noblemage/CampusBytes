@@ -1,54 +1,51 @@
 # CampusBytes
 
-Hostels are still using printed paper to track mess check-ins. It is slow, annoying, and prone to cheating. So here is a webapp to replace it.
+Campus infrastructure usually relies on paper logs and disjointed systems. It is slow and prone to errors. This is a unified webapp to replace it.
 
-Students pull up a QR code on their phone, the warden scans it, and boom, checkin done. 
+Students use a single portal to access daily rolling QR passes for the hostel mess and place live orders with campus vendors.
 
-## What does it actually do?
+## What it does
 
-- Students log in using a password or just a passkey (can be FaceID or Fingerprint, whatever their phone supports). Super quick.
-- Every day, they get dynamic, rolling QR passes that rotate every 30 seconds using client-side TOTP (HMAC-SHA1).
-- Screen Wake Lock: Keeps the phone screen awake and bright when a pass is opened so scanners don't struggle.
-- Warden Kiosk Mode: It provides a full-screen, high-speed camera scanner with instant green/red visual and Web Audio API feedback, automating the entire queue.
-- If someone forgets their phone, the warden can look them up manually via the dashboard.
-- There's a live dashboard tracking exactly how many meals have been served so far.
+- **Unified Access:** Students log in using a password or WebAuthn passkey (FaceID/Fingerprint).
+- **Mess Operations:** Students receive dynamic, rolling QR passes that rotate every 30 seconds via client-side TOTP. Wardens use a high-speed kiosk scanner with instant visual and audio feedback.
+- **Vendor Ordering:** Students place live orders with campus vendors. Orders are tracked via Server-Sent Events (SSE) for instant status updates without polling overhead.
+- **Administration:** Vendors manage menus and live orders. Wardens track live mess check-ins and metrics.
+- **Fail-safes:** Manual lookup fallbacks for students without devices. Screen Wake Lock keeps student devices bright while waiting in queue.
 
-## Checking out the demo
+## Demo
 
-If you just want to poke around without setting up a database, the app has a built-in demo mode.
+A built-in demo mode is available without setting up a database.
 
-- The login pages have "Quick Fill" buttons so you don't even have to type.
-- Try logging in as a paid student (`10001`), an unpaid student (`10002`), or the warden (`warden_demo`).
-- We specifically left student `10003` unregistered. Try logging in with `10003` to see the password setup flow. It pretends to register you but doesn't actually touch the database, so the next visitor can try it too.
-- Want to host this yourself to show it off? Run `npx prisma db seed`. It wipes the database and sets up these exact demo accounts.
+- Login pages feature "Quick Fill" for instant access.
+- Test roles: paid student (`10001`), unpaid student (`10002`), or warden/vendor (`warden_demo`).
+- Run `npx prisma db seed` to wipe the database and provision these exact demo accounts.
  
-**Want to turn the demo off?** Just remove `NEXT_PUBLIC_ENABLE_DEMO_MODE="true"` from your `.env` file.
+Disable demo mode by removing `NEXT_PUBLIC_ENABLE_DEMO_MODE="true"` from `.env`.
 
-## Under the hood (Security)
+## Architecture & Security
 
-- Dynamic Rolling Passes: Rather than static passes, QR payloads contain a 30-second rotating TOTP token. Screenshots are useless after half a minute, preventing students from texting passes to their friends.
-- Sessions use secure, http-only JWT cookies.
-- We use a rate-limiter (Upstash Redis) on every mutating API endpoint to block spam, while read-only polling endpoints are intentionally unrestricted for scale.
-- The database rejects duplicate entries at the constraint level, so scanning a pass twice physically cannot double-count a meal.
-- **Built for Scale:** Includes O(1) scanner verification, Prisma `_count` bandwidth trimming, and Upstash Redis caching for menus and warden metrics so it comfortably runs on free-tier infrastructure.
-- **Atomic Check-Ins:** The Kiosk Mode executes verification and redemption in a single, atomic database transaction to eliminate network tunnel latency, processing students in under 150ms.
+- **Dynamic Rolling Passes:** QR payloads contain a 30-second rotating TOTP token. Screenshots expire in half a minute, preventing pass sharing. Burn-on-scan prevents replay attacks.
+- **Sessions:** Secure, HTTP-only JWT cookies with strict SameSite policies.
+- **Validation & Rate Limiting:** Every mutating endpoint is protected by strict Zod schema validation and Upstash Redis rate-limiting to prevent spam.
+- **Data Integrity:** Database constraints prevent duplicate check-ins.
+- **High Performance:** O(1) scanner verification, Prisma compound indexes (`vendorId, status`), and Server-Sent Events (SSE) for zero-latency live updates without database table scans.
 
 ## The Stack
 
-- Next.js 16
-- PostgreSQL on Supabase
+- Next.js 16 (App Router)
+- PostgreSQL (Supabase / Prisma)
 - SimpleWebAuthn
 - Upstash Redis
 - Tailwind CSS v4
 
-## Running it yourself
+## Deployment
 
-1. Installing the stuff:
+1. Install dependencies:
    ```bash
    npm install
    ```
 
-2. Make a `.env` file and throw these in:
+2. Configure `.env`:
    ```
    DATABASE_URL=
    JWT_SECRET=
@@ -58,7 +55,7 @@ If you just want to poke around without setting up a database, the app has a bui
    TIMEZONE=Asia/Kolkata
    ```
 
-3. Push the schema and spin it up:
+3. Push the schema and start:
    ```bash
    npx prisma db push
    npm run dev

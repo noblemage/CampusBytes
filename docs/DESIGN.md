@@ -88,7 +88,7 @@ No exclamation marks. No emoji in the UI. No "Oops", "Uh oh", "Great", "Success!
 |------------------------------------|------------------------------------------------------------------|
 | QR pass already used               | This pass has already been checked in.                           |
 | QR pass invalid / expired          | Invalid or expired hash.                                         |
-| Student fees unpaid (student view) | Mess fee pending. Clear dues to access passes.                   |
+| Student fees unpaid (student view) | Mess fee pending. Contact the administration.                    |
 | Student fees unpaid (warden view)  | Check-in blocked. Meal access is suspended due to pending fees.  |
 | No audit log entries               | No check-ins logged today.                                       |
 | Yesterday's menu is empty          | No menu was found for yesterday.                                 |

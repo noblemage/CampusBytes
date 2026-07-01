@@ -62,18 +62,18 @@ Here is how the architecture handles scaling:
    - The daily menu is cached in Upstash Redis for 24 hours (1 Postgres query per day).
    - Warden dashboard metrics are cached in Redis for 60 seconds.
    - We use HTTP `Cache-Control` headers so Vercel's Edge network returns fresh data instantly.
-4. **Lightweight Polling & Deduplication**:
-   - The student dashboard uses a heavily optimized polling endpoint (`/api/students/redemptions`) that only fires when the QR code is expanded.
-   - The React Query `useRef` deduplication guard drops duplicate/spammy taps to protect the database.
-   - The polling interval is aggressively set to 500ms for demo snappiness, which is safe because of the lightweight endpoint.
-5. **Atomic Check-Ins (Kiosk Mode)**:
+6. **Server-Sent Events (SSE)**:
+   - Vendor live orders are pushed over a continuous `EventSource` connection rather than aggressive interval polling. This drops server CPU utilization by virtually eliminating TCP handshakes and excessive DB queries.
+7. **Lazy Loading Heavy Dependencies**:
+   - Libraries like `qrcode` are dynamically imported (`await import('qrcode')`) only when a user triggers the specific UI state that requires them, keeping the initial JavaScript payload extremely lean.
+8. **Atomic Check-Ins (Kiosk Mode)**:
    - When running in Warden Kiosk mode, the verification and check-in steps are merged into a single atomic API call, entirely bypassing the network tunnel "double-request" latency.
-6. **Web Audio API**:
+9. **Web Audio API**:
    - Kiosk feedback tones are synthesized on the fly using the browser's native Web Audio API, avoiding heavy MP3 file downloads or caching issues over slow Wi-Fi.
-7. **Native Dynamic Icons**:
-   - Instead of static SVGs which are known to break in Apple Safari/iOS, we use Next.js `apple-icon.tsx` to dynamically generate perfect `png` icons using Twemoji edge-rendering.
-8. **Time-Drift Compensation**:
-   - Since TOTP calculations depend on exact sync, the client checks the server's time on load and offsets its local generation clock accordingly. If a student's system clock is off, pass generation still works perfectly.
-9. **Screen Wake Lock**:
-   - Uses the browser's native Screen Wake Lock API when a QR pass modal is expanded. This keeps the device's screen bright and awake so scanners can read the code instantly in low-signal lines.
+10. **Native Dynamic Icons**:
+    - Instead of static SVGs which are known to break in Apple Safari/iOS, we use Next.js `apple-icon.tsx` to dynamically generate perfect `png` icons using Twemoji edge-rendering.
+11. **Time-Drift Compensation**:
+    - Since TOTP calculations depend on exact sync, the client checks the server's time on load and offsets its local generation clock accordingly. If a student's system clock is off, pass generation still works perfectly.
+12. **Screen Wake Lock**:
+    - Uses the browser's native Screen Wake Lock API when a QR pass modal is expanded. This keeps the device's screen bright and awake so scanners can read the code instantly in low-signal lines.
 
